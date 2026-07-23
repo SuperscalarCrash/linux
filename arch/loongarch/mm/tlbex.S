@@ -313,15 +313,23 @@ smp_pgtable_change_store:
 	PTR_L		t0, t1, 0
 #endif
 
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_32BIT_REDUCED
+	PTR_SRLI	ra, t0, _PAGE_PRESENT_SHIFT
+	andi		ra, ra, 1
+	beqz		ra, nopage_tlb_store
+	PTR_SRLI	ra, t0, _PAGE_WRITE_SHIFT
+	andi		ra, ra, 1
+	beqz		ra, nopage_tlb_store
+#elif defined(CONFIG_64BIT)
 	andi		ra, t0, _PAGE_PRESENT | _PAGE_WRITE
 	xori		ra, ra, _PAGE_PRESENT | _PAGE_WRITE
+	bnez		ra, nopage_tlb_store
 #else
 	PTR_LI		ra, _PAGE_PRESENT | _PAGE_WRITE
 	and		ra, ra, t0
 	nor		ra, ra, zero
-#endif
 	bnez		ra, nopage_tlb_store
+#endif
 
 #ifdef CONFIG_64BIT
 	ori		t0, t0, (_PAGE_VALID | _PAGE_DIRTY | _PAGE_MODIFIED)
@@ -366,16 +374,23 @@ tlb_huge_update_store:
 	PTR_ROTRI	ra, ra, BITS_PER_LONG - (_PAGE_HUGE_SHIFT + 1)
 #endif
 
-#ifdef CONFIG_64BIT
+#ifdef CONFIG_32BIT_REDUCED
+	PTR_SRLI	t0, ra, _PAGE_PRESENT_SHIFT
+	andi		t0, t0, 1
+	beqz		t0, nopage_tlb_store
+	PTR_SRLI	t0, ra, _PAGE_WRITE_SHIFT
+	andi		t0, t0, 1
+	beqz		t0, nopage_tlb_store
+#elif defined(CONFIG_64BIT)
 	andi		t0, ra, _PAGE_PRESENT | _PAGE_WRITE
 	xori		t0, t0, _PAGE_PRESENT | _PAGE_WRITE
+	bnez		t0, nopage_tlb_store
 #else
 	PTR_LI		t0, _PAGE_PRESENT | _PAGE_WRITE
 	and		t0, t0, ra
 	nor		t0, t0, zero
-#endif
-
 	bnez		t0, nopage_tlb_store
+#endif
 
 #ifdef CONFIG_SMP
 	ori		t0, ra, (_PAGE_VALID | _PAGE_DIRTY | _PAGE_MODIFIED)
