@@ -16,6 +16,23 @@
 	\op	\d3, \d3, \s3
 .endm
 
+#ifdef CONFIG_32BIT_REDUCED
+.macro	ROTR_4REG d0 d1 d2 d3 i0 i1 i2 i3
+	srli.w	ra, \d0, \i0
+	slli.w	\d0, \d0, (32 - \i0)
+	or	\d0, \d0, ra
+	srli.w	ra, \d1, \i1
+	slli.w	\d1, \d1, (32 - \i1)
+	or	\d1, \d1, ra
+	srli.w	ra, \d2, \i2
+	slli.w	\d2, \d2, (32 - \i2)
+	or	\d2, \d2, ra
+	srli.w	ra, \d3, \i3
+	slli.w	\d3, \d3, (32 - \i3)
+	or	\d3, \d3, ra
+.endm
+#endif
+
 /*
  * Very basic LoongArch implementation of ChaCha20. Produces a given positive
  * number of blocks of output with a nonce of 0, taking an input key and
@@ -82,7 +99,12 @@ SYM_FUNC_START(__arch_chacha20_blocks_nostack)
 	 * This does not violate the stack-less requirement: no sensitive data
 	 * is spilled onto the stack.
 	 */
+#ifdef CONFIG_32BIT_REDUCED
+	PTR_ADDI	sp, sp, (-SZREG * 11) & STACK_ALIGN
+	REG_S		ra, sp, SZREG * 10
+#else
 	PTR_ADDI	sp, sp, (-SZREG * 10) & STACK_ALIGN
+#endif
 	REG_S		s0, sp, 0
 	REG_S		s1, sp, SZREG
 	REG_S		s2, sp, SZREG * 2
@@ -132,36 +154,68 @@ SYM_FUNC_START(__arch_chacha20_blocks_nostack)
 	/* odd round */
 	OP_4REG	add.w	line0, line1
 	OP_4REG	xor	line3, line0
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line3, _16
+#else
 	OP_4REG	rotri.w	line3, _16
+#endif
 
 	OP_4REG	add.w	line2, line3
 	OP_4REG	xor	line1, line2
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line1, _20
+#else
 	OP_4REG	rotri.w	line1, _20
+#endif
 
 	OP_4REG	add.w	line0, line1
 	OP_4REG	xor	line3, line0
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line3, _24
+#else
 	OP_4REG	rotri.w	line3, _24
+#endif
 
 	OP_4REG	add.w	line2, line3
 	OP_4REG	xor	line1, line2
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line1, _25
+#else
 	OP_4REG	rotri.w	line1, _25
+#endif
 
 	/* even round */
 	OP_4REG	add.w	line0, line1_perm
 	OP_4REG	xor	line3_perm, line0
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line3_perm, _16
+#else
 	OP_4REG	rotri.w	line3_perm, _16
+#endif
 
 	OP_4REG	add.w	line2_perm, line3_perm
 	OP_4REG	xor	line1_perm, line2_perm
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line1_perm, _20
+#else
 	OP_4REG	rotri.w	line1_perm, _20
+#endif
 
 	OP_4REG	add.w	line0, line1_perm
 	OP_4REG	xor	line3_perm, line0
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line3_perm, _24
+#else
 	OP_4REG	rotri.w	line3_perm, _24
+#endif
 
 	OP_4REG	add.w	line2_perm, line3_perm
 	OP_4REG	xor	line1_perm, line2_perm
+#ifdef CONFIG_32BIT_REDUCED
+	ROTR_4REG	line1_perm, _25
+#else
 	OP_4REG	rotri.w	line1_perm, _25
+#endif
 
 	addi.w		i, i, -1
 	bnez		i, .Lpermute
@@ -247,7 +301,12 @@ SYM_FUNC_START(__arch_chacha20_blocks_nostack)
 	REG_L		s7, sp, SZREG * 7
 	REG_L		s8, sp, SZREG * 8
 	REG_L		s9, sp, SZREG * 9
+#ifdef CONFIG_32BIT_REDUCED
+	REG_L		ra, sp, SZREG * 10
+	PTR_ADDI	sp, sp, -((-SZREG * 11) & STACK_ALIGN)
+#else
 	PTR_ADDI	sp, sp, -((-SZREG * 10) & STACK_ALIGN)
+#endif
 
 	jr		ra
 SYM_FUNC_END(__arch_chacha20_blocks_nostack)

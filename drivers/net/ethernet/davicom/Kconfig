@@ -52,4 +52,13 @@ config DM9051
 	  The SPI mode for the host's SPI master to access DM9051 is mode
 	  0 on the SPI bus.
 
+config CHIPLAB_DMFE
+	tristate "Loongson Chiplab integrated DMFE MAC"
+	depends on OF && LOONGARCH && 32BIT_REDUCED
+	select CRC32
+	select MII
+	help
+	  Support the DM9102-compatible 10/100 Ethernet MAC integrated in
+	  the Loongson Chiplab FPGA SoC.
+
 endif # NET_VENDOR_DAVICOM

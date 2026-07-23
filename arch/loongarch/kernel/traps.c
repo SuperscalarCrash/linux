@@ -55,8 +55,34 @@
 #include "access-helper.h"
 
 void *exception_table[EXCCODE_INT_START] = {
+#ifdef CONFIG_32BIT_REDUCED
+	[0 ... EXCCODE_INT_START - 1] = handle_reserved_from_common,
+#else
 	[0 ... EXCCODE_INT_START - 1] = handle_reserved,
+#endif
 
+#ifdef CONFIG_32BIT_REDUCED
+	[EXCCODE_TLBI]		= handle_tlb_load_from_common,
+	[EXCCODE_TLBL]		= handle_tlb_load_from_common,
+	[EXCCODE_TLBS]		= handle_tlb_store_from_common,
+	[EXCCODE_TLBM]		= handle_tlb_modify_from_common,
+	[EXCCODE_TLBNR]		= handle_tlb_protect_from_common,
+	[EXCCODE_TLBNX]		= handle_tlb_protect_from_common,
+	[EXCCODE_TLBPE]		= handle_tlb_protect_from_common,
+	[EXCCODE_ADE]		= handle_ade_from_common,
+	[EXCCODE_ALE]		= handle_ale_from_common,
+	[EXCCODE_BCE]		= handle_bce_from_common,
+	[EXCCODE_SYS]		= handle_sys,
+	[EXCCODE_BP]		= handle_bp_from_common,
+	[EXCCODE_INE]		= handle_ri_from_common,
+	[EXCCODE_IPE]		= handle_ri_from_common,
+	[EXCCODE_FPDIS]		= handle_fpu_from_common,
+	[EXCCODE_LSXDIS]	= handle_lsx_from_common,
+	[EXCCODE_LASXDIS]	= handle_lasx_from_common,
+	[EXCCODE_FPE]		= handle_fpe_from_common,
+	[EXCCODE_WATCH]		= handle_watch_from_common,
+	[EXCCODE_BTDIS]		= handle_lbt_from_common,
+#else
 	[EXCCODE_TLBI]		= handle_tlb_load,
 	[EXCCODE_TLBL]		= handle_tlb_load,
 	[EXCCODE_TLBS]		= handle_tlb_store,
@@ -77,6 +103,7 @@ void *exception_table[EXCCODE_INT_START] = {
 	[EXCCODE_FPE]		= handle_fpe,
 	[EXCCODE_WATCH]		= handle_watch,
 	[EXCCODE_BTDIS]		= handle_lbt,
+#endif
 };
 EXPORT_SYMBOL_GPL(exception_table);
 
@@ -373,7 +400,7 @@ static void __show_regs(const struct pt_regs *regs)
 	if (exccode >= EXCCODE_TLBL && exccode <= EXCCODE_ALE)
 		printk(" BADV: %0*lx\n", field, regs->csr_badvaddr);
 
-	printk(" PRID: %08x (%s, %s)\n", read_cpucfg(LOONGARCH_CPUCFG0),
+	printk(" PRID: %08x (%s, %s)\n", current_cpu_data.processor_id,
 	       cpu_family_string(), cpu_full_name_string());
 }
 
@@ -1145,9 +1172,13 @@ static void configure_exception_vector(void)
 
 void per_cpu_trap_init(int cpu)
 {
+#ifndef CONFIG_32BIT_REDUCED
 	unsigned int i;
+#endif
 
+#ifndef CONFIG_32BIT_REDUCED
 	setup_vint_size(VECSIZE);
+#endif
 
 	configure_exception_vector();
 
@@ -1160,9 +1191,14 @@ void per_cpu_trap_init(int cpu)
 	enter_lazy_tlb(&init_mm, current);
 
 	/* Initialise exception handlers */
-	if (cpu == 0)
+	if (cpu == 0) {
+#ifdef CONFIG_32BIT_REDUCED
+		set_handler(0, handle_common, VECSIZE);
+#else
 		for (i = 0; i < 64; i++)
 			set_handler(i * VECSIZE, handle_reserved, VECSIZE);
+#endif
+	}
 
 	tlb_init(cpu);
 	cpu_cache_init();
@@ -1195,8 +1231,11 @@ void set_merr_handler(unsigned long offset, void *addr, unsigned long size)
 
 void __init trap_init(void)
 {
+#ifndef CONFIG_32BIT_REDUCED
 	long i;
+#endif
 
+#ifndef CONFIG_32BIT_REDUCED
 	/* Set interrupt vector handler */
 	for (i = EXCCODE_INT_START; i <= EXCCODE_INT_END; i++)
 		set_handler(i * VECSIZE, handle_vint, VECSIZE);
@@ -1206,6 +1245,7 @@ void __init trap_init(void)
 		set_handler(i * VECSIZE, exception_table[i], VECSIZE);
 
 	cache_error_setup();
+#endif
 
 	local_flush_icache_range(eentry, eentry + 0x400);
 }

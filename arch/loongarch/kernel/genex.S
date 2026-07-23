@@ -37,9 +37,43 @@ idle_exit:
 SYM_FUNC_END(__arch_cpu_idle)
 	.previous
 
+#ifdef CONFIG_32BIT_REDUCED
+/*
+ * LA32R has one EENTRY and no ECFG.VS vector spacing.  Save the only
+ * registers used by the dispatcher, distinguish interrupts from ordinary
+ * exceptions, then jump through the normal exception table.
+ */
+SYM_CODE_START(handle_common)
+	UNWIND_HINT_UNDEFINED
+	BACKUP_T0T1
+	csrrd	t0, LOONGARCH_CSR_ESTAT
+	csrrd	t1, LOONGARCH_CSR_ECFG
+	and	t0, t0, t1
+	bnez	t0, 1f
+
+	csrrd	t0, LOONGARCH_CSR_ESTAT
+	srli.w	t0, t0, CSR_ESTAT_EXC_SHIFT
+	andi	t0, t0, 0x3f
+	sltui	t1, t0, EXCCODE_INT_START
+	beq	t1, zero, 2f
+	la_abs	t1, exception_table
+	slli.w	t0, t0, PTR_SCALESHIFT
+	PTR_ADD	t1, t1, t0
+	PTR_L	t1, t1, 0
+	jr	t1
+
+1:	la_abs	t1, handle_vint_from_common
+	jr	t1
+2:	la_abs	t1, handle_reserved_from_common
+	jr	t1
+SYM_CODE_END(handle_common)
+#endif
+
 SYM_CODE_START(handle_vint)
 	UNWIND_HINT_UNDEFINED
 	BACKUP_T0T1
+	.globl	handle_vint_from_common
+handle_vint_from_common:
 	SAVE_ALL
 	la_abs	t1, idle_exit
 	LONG_L	t0, sp, PT_ERA
@@ -77,6 +111,8 @@ SYM_CODE_END(except_vec_cex)
 	UNWIND_HINT_UNDEFINED
 	666:
 	BACKUP_T0T1
+	.globl	handle_\exception\()_from_common
+handle_\exception\()_from_common:
 	SAVE_ALL
 	build_prep_\prep
 	move	a0, sp

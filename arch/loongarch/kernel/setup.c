@@ -502,7 +502,9 @@ static __init int arch_reserve_pio_range(void)
 {
 	struct device_node *np;
 
+#ifdef CONFIG_ACPI
 	acpi_add_early_pio();
+#endif
 
 	for_each_node_by_name(np, "isa") {
 		struct of_range range;

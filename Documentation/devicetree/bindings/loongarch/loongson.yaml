@@ -14,6 +14,11 @@ properties:
     const: '/'
   compatible:
     oneOf:
+      - description: Gemmont LA32R processor based Chiplab NSCSCC board
+        items:
+          - const: loongson,chiplab-nscscc
+          - const: loongson,loongson32
+
       - description: Loongson-2K0500 processor based boards
         items:
           - const: loongson,ls2k0500-ref

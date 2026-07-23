@@ -41,9 +41,9 @@ SYM_FUNC_START(__memcpy_generic)
 
 1:	ld.b	t0, a1, 0
 	st.b	t0, a0, 0
-	addi.d	a0, a0, 1
-	addi.d	a1, a1, 1
-	addi.d	a2, a2, -1
+	PTR_ADDI a0, a0, 1
+	PTR_ADDI a1, a1, 1
+	PTR_ADDI a2, a2, -1
 	bgt	a2, zero, 1b
 
 2:	move	a0, a3
@@ -53,7 +53,7 @@ _ASM_NOKPROBE(__memcpy_generic)
 
 	.align	5
 SYM_FUNC_START_NOALIGN(__memcpy_small)
-	pcaddi	t0, 8
+	la.pcrel t0, 0f
 	slli.d	a2, a2, 5
 	add.d	t0, t0, a2
 	jr	t0

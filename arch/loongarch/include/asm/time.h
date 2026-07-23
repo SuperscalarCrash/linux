@@ -17,6 +17,9 @@ extern void sync_counter(void);
 
 static inline unsigned int calc_const_freq(void)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	return 0;
+#else
 	unsigned int res;
 	unsigned int base_freq;
 	unsigned int cfm, cfd;
@@ -34,6 +37,7 @@ static inline unsigned int calc_const_freq(void)
 		return 0;
 
 	return (base_freq * cfm / cfd);
+#endif
 }
 
 /*

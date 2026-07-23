@@ -91,7 +91,7 @@ SYM_CODE_START(kernel_entry)			# kernel entry point
 	set_saved_sp	sp, t0, t1
 
 	/* Jump to the new kernel: new_pc = current_pc + random_offset */
-	pcaddi		t0, 0
+	pcaddu12i	t0, 0
 	PTR_ADD		t0, t0, a0
 	jirl		zero, t0, 0xc
 #endif /* CONFIG_RANDOMIZE_BASE */

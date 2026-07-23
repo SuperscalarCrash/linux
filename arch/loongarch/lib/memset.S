@@ -46,8 +46,8 @@ SYM_FUNC_START(__memset_generic)
 	beqz	a2, 2f
 
 1:	st.b	a1, a0, 0
-	addi.d	a0, a0, 1
-	addi.d	a2, a2, -1
+	PTR_ADDI a0, a0, 1
+	PTR_ADDI a2, a2, -1
 	bgt	a2, zero, 1b
 
 2:	move	a0, a3
@@ -122,7 +122,7 @@ SYM_FUNC_START(__memset_fast)
 
 	.align	4
 .Lsmall:
-	pcaddi	t0, 4
+	la.pcrel t0, 0f
 	slli.d	a2, a2, 4
 	add.d	t0, t0, a2
 	jr	t0

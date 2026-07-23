@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: GPL-2.0
+/dts-v1/;
+
+/ {
+	model = "Loongson Chiplab NSCSCC board with Gemmont LA32R";
+	compatible = "loongson,chiplab-nscscc", "loongson,loongson32";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	aliases {
+		serial0 = &uart0;
+		ethernet0 = &gmac0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 rdinit=/init";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "loongson,la32r";
+			reg = <0>;
+			status = "okay";
+		};
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x00000000 0x08000000>;
+	};
+
+	cpuic: interrupt-controller {
+		compatible = "loongson,cpu-interrupt-controller";
+		interrupt-controller;
+		#interrupt-cells = <1>;
+	};
+
+	soc@10000000 {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x10000000 0x10000000 0x10000000>;
+
+		uart0: serial@1fe001e0 {
+			compatible = "ns16550a";
+			reg = <0x1fe001e0 0x10>;
+			clock-frequency = <33000000>;
+			current-speed = <115200>;
+			interrupt-parent = <&cpuic>;
+			interrupts = <3>;
+			reg-shift = <0>;
+			reg-io-width = <1>;
+			no-loopback-test;
+		};
+
+		gmac0: ethernet@1ff00000 {
+			compatible = "loongson,chiplab-dmfe";
+			reg = <0x1ff00000 0x10000>;
+			interrupt-parent = <&cpuic>;
+			interrupts = <2>;
+			local-mac-address = [00 98 76 64 32 19];
+			phy-mode = "rgmii";
+		};
+	};
+};

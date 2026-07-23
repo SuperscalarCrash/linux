@@ -101,41 +101,109 @@
 	movcf2gr	\tmp0, $fcc0
 	move		\tmp1, \tmp0
 	movcf2gr	\tmp0, $fcc1
+#ifdef CONFIG_32BIT_REDUCED
+	slli.w		\tmp0, \tmp0, 8
+	or		\tmp1, \tmp1, \tmp0
+#else
 	bstrins.w	\tmp1, \tmp0, 15, 8
+#endif
 	movcf2gr	\tmp0, $fcc2
+#ifdef CONFIG_32BIT_REDUCED
+	slli.w		\tmp0, \tmp0, 16
+	or		\tmp1, \tmp1, \tmp0
+#else
 	bstrins.w	\tmp1, \tmp0, 23, 16
+#endif
 	movcf2gr	\tmp0, $fcc3
+#ifdef CONFIG_32BIT_REDUCED
+	slli.w		\tmp0, \tmp0, 24
+	or		\tmp1, \tmp1, \tmp0
+#else
 	bstrins.w	\tmp1, \tmp0, 31, 24
+#endif
 	EX	st.w	\tmp1, \base, 0
 	movcf2gr	\tmp0, $fcc4
 	move		\tmp1, \tmp0
 	movcf2gr	\tmp0, $fcc5
+#ifdef CONFIG_32BIT_REDUCED
+	slli.w		\tmp0, \tmp0, 8
+	or		\tmp1, \tmp1, \tmp0
+#else
 	bstrins.w	\tmp1, \tmp0, 15, 8
+#endif
 	movcf2gr	\tmp0, $fcc6
+#ifdef CONFIG_32BIT_REDUCED
+	slli.w		\tmp0, \tmp0, 16
+	or		\tmp1, \tmp1, \tmp0
+#else
 	bstrins.w	\tmp1, \tmp0, 23, 16
+#endif
 	movcf2gr	\tmp0, $fcc7
+#ifdef CONFIG_32BIT_REDUCED
+	slli.w		\tmp0, \tmp0, 24
+	or		\tmp1, \tmp1, \tmp0
+#else
 	bstrins.w	\tmp1, \tmp0, 31, 24
+#endif
 	EX	st.w	\tmp1, \base, 4
 	.endm
 
 	.macro sc_restore_fcc base tmp0 tmp1
 	EX	ld.w	\tmp0, \base, 0
+#ifdef CONFIG_32BIT_REDUCED
+	andi		\tmp1, \tmp0, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 7, 0
+#endif
 	movgr2cf	$fcc0, \tmp1
+#ifdef CONFIG_32BIT_REDUCED
+	srli.w		\tmp1, \tmp0, 8
+	andi		\tmp1, \tmp1, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 15, 8
+#endif
 	movgr2cf	$fcc1, \tmp1
+#ifdef CONFIG_32BIT_REDUCED
+	srli.w		\tmp1, \tmp0, 16
+	andi		\tmp1, \tmp1, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 23, 16
+#endif
 	movgr2cf	$fcc2, \tmp1
+#ifdef CONFIG_32BIT_REDUCED
+	srli.w		\tmp1, \tmp0, 24
+	andi		\tmp1, \tmp1, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 31, 24
+#endif
 	movgr2cf	$fcc3, \tmp1
 	EX	ld.w	\tmp0, \base, 4
+#ifdef CONFIG_32BIT_REDUCED
+	andi		\tmp1, \tmp0, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 7, 0
+#endif
 	movgr2cf	$fcc4, \tmp1
+#ifdef CONFIG_32BIT_REDUCED
+	srli.w		\tmp1, \tmp0, 8
+	andi		\tmp1, \tmp1, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 15, 8
+#endif
 	movgr2cf	$fcc5, \tmp1
+#ifdef CONFIG_32BIT_REDUCED
+	srli.w		\tmp1, \tmp0, 16
+	andi		\tmp1, \tmp1, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 23, 16
+#endif
 	movgr2cf	$fcc6, \tmp1
+#ifdef CONFIG_32BIT_REDUCED
+	srli.w		\tmp1, \tmp0, 24
+	andi		\tmp1, \tmp1, 1
+#else
 	bstrpick.w	\tmp1, \tmp0, 31, 24
+#endif
 	movgr2cf	$fcc7, \tmp1
 	.endm
 #else

@@ -45,14 +45,14 @@ SYM_FUNC_START(__rmemcpy_generic)
 	move	a3, a0
 	beqz	a2, 2f
 
-	add.d	a0, a0, a2
-	add.d	a1, a1, a2
+	PTR_ADD	a0, a0, a2
+	PTR_ADD	a1, a1, a2
 
 1:	ld.b	t0, a1, -1
 	st.b	t0, a0, -1
-	addi.d	a0, a0, -1
-	addi.d	a1, a1, -1
-	addi.d	a2, a2, -1
+	PTR_ADDI a0, a0, -1
+	PTR_ADDI a1, a1, -1
+	PTR_ADDI a2, a2, -1
 	bgt	a2, zero, 1b
 
 2:	move	a0, a3

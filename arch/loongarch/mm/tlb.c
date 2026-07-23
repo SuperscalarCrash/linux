@@ -280,8 +280,10 @@ static void setup_tlb_handler(int cpu)
 		memcpy((void *)tlbrentry, handle_tlb_refill, 0x80);
 		local_flush_icache_range(tlbrentry, tlbrentry + 0x80);
 
+#ifndef CONFIG_32BIT_REDUCED
 		for (int i = EXCCODE_TLBL; i <= EXCCODE_TLBPE; i++)
 			set_handler(i * VECSIZE, exception_table[i], VECSIZE);
+#endif
 	} else {
 		int vec_sz __maybe_unused;
 		void *addr __maybe_unused;

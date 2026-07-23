@@ -11,6 +11,7 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
+#include <linux/of.h>
 #include <linux/sched_clock.h>
 #include <linux/spinlock.h>
 
@@ -24,6 +25,12 @@ u64 cpu_clock_freq;
 EXPORT_SYMBOL(cpu_clock_freq);
 u64 const_clock_freq;
 EXPORT_SYMBOL(const_clock_freq);
+
+static int __init setup_cpuclock(char *str)
+{
+	return kstrtou64(str, 0, &cpu_clock_freq);
+}
+early_param("cpuclock", setup_cpuclock);
 
 static DEFINE_RAW_SPINLOCK(state_lock);
 static DEFINE_PER_CPU(struct clock_event_device, constant_clockevent_device);
@@ -233,10 +240,27 @@ int __init constant_clocksource_init(void)
 
 void __init time_init(void)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	struct device_node *cpu;
+	u32 freq;
+
+	if (!cpu_clock_freq) {
+		cpu = of_get_cpu_node(0, NULL);
+		if (cpu && !of_property_read_u32(cpu, "clock-frequency", &freq))
+			cpu_clock_freq = freq;
+		of_node_put(cpu);
+	}
+
+	if (!cpu_clock_freq)
+		panic("LA32R CPU clock is missing; provide cpuclock= or a CPU clock-frequency property");
+
+	const_clock_freq = cpu_clock_freq;
+#else
 	if (!cpu_has_cpucfg)
 		const_clock_freq = cpu_clock_freq;
 	else
 		const_clock_freq = calc_const_freq();
+#endif
 
 	init_offset = -(get_cycles() - csr_read(LOONGARCH_CSR_CNTC));
 

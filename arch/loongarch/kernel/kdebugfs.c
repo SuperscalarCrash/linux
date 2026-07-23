@@ -147,7 +147,11 @@ static const struct file_operations tso_fops = {
 
 static int __init arch_kdebugfs_init(void)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	unsigned int config = 0;
+#else
 	unsigned int config = read_cpucfg(LOONGARCH_CPUCFG3);
+#endif
 
 	arch_debugfs_dir = debugfs_create_dir("loongarch", NULL);
 

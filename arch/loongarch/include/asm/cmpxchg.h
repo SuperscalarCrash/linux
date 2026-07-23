@@ -31,7 +31,7 @@
 	"1:	ll.w	%0, %3		\n"		\
 	"	move	%1, %z4		\n"		\
 	"	sc.w	%1, %2		\n"		\
-	"	beqz	%1, 1b		\n"		\
+	"	beq	%1, $zero, 1b	\n"		\
 	: "=&r" (__ret), "=&r" (__tmp), "=ZC" (*m)	\
 	: "ZC" (*m), "Jr" (val)				\
 	: "memory");					\
@@ -70,7 +70,7 @@ static inline unsigned int __xchg_small(volatile void *ptr, unsigned int val,
 	"	andn		%1, %0, %z4	\n"
 	"	or		%1, %1, %z5	\n"
 	"	sc.w		%1, %2		\n"
-	"	beqz		%1, 1b		\n"
+	"	beq		%1, $zero, 1b	\n"
 	: "=&r" (old32), "=&r" (temp), "=ZC" (*ptr32)
 	: "ZC" (*ptr32), "Jr" (mask), "Jr" (val << shift)
 	: "memory");
@@ -128,7 +128,7 @@ __arch_xchg(volatile void *ptr, unsigned long x, int size)
 	"	bne	%0, %z3, 2f			\n"		\
 	"	move	$t0, %z4			\n"		\
 	"	" st "	$t0, %1				\n"		\
-	"	beqz	$t0, 1b				\n"		\
+	"	beq	$t0, $zero, 1b			\n"		\
 	"2:						\n"		\
 	__WEAK_LLSC_MB							\
 	: "=&r" (__ret), "=ZB"(*m)					\
@@ -174,7 +174,7 @@ static inline unsigned int __cmpxchg_small(volatile void *ptr, unsigned int old,
 	"	andn		%1, %0, %z4	\n"
 	"	or		%1, %1, %z6	\n"
 	"	sc.w		%1, %2		\n"
-	"	beqz		%1, 1b		\n"
+	"	beq		%1, $zero, 1b	\n"
 	"	b		3f		\n"
 	"2:					\n"
 	__WEAK_LLSC_MB
@@ -269,7 +269,7 @@ union __u128_halves {
 	"     move    $t0, %z7					\n"	\
 	"     move    $t1, %z8					\n"	\
 	"2:   sc.q    $t0, $t1, %2				\n"	\
-	"     beqz    $t0, 1b					\n"	\
+	"     beq     $t0, $zero, 1b				\n"	\
 	llsc_mb								\
 	: "=&r" (__ret.low), "=&r" (__ret.high)				\
 	: "r" (__ptr),							\

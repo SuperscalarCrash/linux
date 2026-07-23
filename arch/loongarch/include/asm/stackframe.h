@@ -39,7 +39,7 @@
 	.endm
 
 	.macro SETUP_TWINS temp
-	pcaddi	t0, 0
+	pcaddu12i t0, 0
 	PTR_LI	t1, ~TO_PHYS_MASK
 	and	t0, t0, t1
 	ori	t0, t0, (1 << 4 | 1)
@@ -72,9 +72,16 @@
 /* Jump to the runtime virtual address. */
 	.macro JUMP_VIRT_ADDR temp1 temp2
 	PTR_LI	\temp1, CACHE_BASE
-	pcaddi	\temp2, 0
-	PTR_BSTRINS  \temp1, \temp2, (DMW_PABITS - 1), 0
+	pcaddu12i \temp2, 0
+#ifdef CONFIG_32BIT_REDUCED
+	PTR_SLLI \temp2, \temp2, (32 - DMW_PABITS)
+	PTR_SRLI \temp2, \temp2, (32 - DMW_PABITS)
+	or	\temp1, \temp1, \temp2
+	jirl	zero, \temp1, 0x14
+#else
+	PTR_BSTRINS \temp1, \temp2, (DMW_PABITS - 1), 0
 	jirl	zero, \temp1, 0xc
+#endif
 	.endm
 
 	.macro STACKLEAK_ERASE

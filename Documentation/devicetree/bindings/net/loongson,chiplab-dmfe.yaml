@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/net/loongson,chiplab-dmfe.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Loongson Chiplab DMFE-compatible Ethernet controller
+
+maintainers:
+  - eWloYW8 <3171132517@qq.com>
+
+description:
+  The Chiplab FPGA design contains a platform-attached 10/100 Mbit Ethernet
+  MAC derived from the Davicom DM9102 programming model.
+
+properties:
+  compatible:
+    const: loongson,chiplab-dmfe
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  local-mac-address: true
+
+  phy-mode:
+    const: rgmii
+
+required:
+  - compatible
+  - reg
+  - interrupts
+
+allOf:
+  - $ref: ethernet-controller.yaml#
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    ethernet@1ff00000 {
+        compatible = "loongson,chiplab-dmfe";
+        reg = <0x1ff00000 0x10000>;
+        interrupts = <2>;
+        local-mac-address = [00 98 76 64 32 19];
+        phy-mode = "rgmii";
+    };

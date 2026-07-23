@@ -104,6 +104,30 @@ do {											\
 
 void cpu_cache_init(void)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	struct cache_desc *cdesc = current_cpu_data.cache_leaves;
+
+	/*
+	 * LA32R has no CPUCFG cache descriptors.  Gemmont has private,
+	 * separate 8 KiB two-way L1 caches with 64-byte lines.
+	 */
+	cdesc->type = CACHE_TYPE_INST;
+	cdesc->level = 1;
+	cdesc->sets = 64;
+	cdesc->ways = 2;
+	cdesc->linesz = 64;
+	cdesc->flags = CACHE_PRESENT | CACHE_PRIVATE;
+
+	cdesc++;
+	cdesc->type = CACHE_TYPE_DATA;
+	cdesc->level = 1;
+	cdesc->sets = 64;
+	cdesc->ways = 2;
+	cdesc->linesz = 64;
+	cdesc->flags = CACHE_PRESENT | CACHE_PRIVATE;
+
+	current_cpu_data.cache_leaves_present = 2;
+#else
 	unsigned int leaf = 0, level = 1;
 	unsigned int config = read_cpucfg(LOONGARCH_CPUCFG16);
 	struct cache_desc *cdesc = current_cpu_data.cache_leaves;
@@ -146,6 +170,7 @@ void cpu_cache_init(void)
 
 	current_cpu_data.cache_leaves_present = leaf;
 	current_cpu_data.options |= LOONGARCH_CPU_PREFETCH;
+#endif
 }
 
 static const pgprot_t protection_map[16] = {

@@ -138,6 +138,30 @@ static void cpu_probe_common(struct cpuinfo_loongarch *c)
 	unsigned int config;
 	unsigned long asid_mask;
 
+#ifdef CONFIG_32BIT_REDUCED
+	/*
+	 * CPUCFG and PRCFG are not part of LA32R.  The reduced kernel targets
+	 * the Gemmont implementation profile: architectural CSRs and paging,
+	 * a 32-bit timer, four KSave registers, and a 32-entry fully
+	 * associative TLB.  ASID width remains discoverable through the
+	 * architectural ASID CSR.
+	 */
+	c->options = LOONGARCH_CPU_CSR | LOONGARCH_CPU_TLB;
+	elf_hwcap = 0;
+	set_isa(c, LOONGARCH_CPU_ISA_LA32R);
+
+	config = csr_read32(LOONGARCH_CSR_ASID);
+	config = (config & CSR_ASID_BIT) >> CSR_ASID_BIT_SHIFT;
+	asid_mask = GENMASK(config - 1, 0);
+	set_cpu_asid_mask(c, asid_mask);
+
+	c->timerbits = 32;
+	c->ksave_mask = 0;
+	c->tlbsizemtlb = 32;
+	c->tlbsizestlbsets = 0;
+	c->tlbsizestlbways = 0;
+	c->tlbsize = c->tlbsizemtlb;
+#else
 	c->options = LOONGARCH_CPU_CPUCFG | LOONGARCH_CPU_CSR | LOONGARCH_CPU_VINT;
 
 	elf_hwcap = HWCAP_LOONGARCH_CPUCFG;
@@ -277,6 +301,7 @@ static void cpu_probe_common(struct cpuinfo_loongarch *c)
 
 	if (get_num_brps() + get_num_wrps())
 		c->options |= LOONGARCH_CPU_WATCH;
+#endif
 }
 
 #define MAX_NAME_LEN	32
@@ -379,8 +404,13 @@ void cpu_probe(void)
 	set_elf_platform(cpu, "loongarch");
 
 	c->cputype	= CPU_UNKNOWN;
+#ifdef CONFIG_32BIT_REDUCED
+	c->processor_id = PRID_COMP_LOONGSON | PRID_SERIES_LA132;
+	c->fpu_vers     = 0;
+#else
 	c->processor_id = read_cpucfg(LOONGARCH_CPUCFG0);
 	c->fpu_vers     = (read_cpucfg(LOONGARCH_CPUCFG2) & CPUCFG2_FPVERS) >> 3;
+#endif
 
 	c->fpu_csr0	= FPU_CSR_RN;
 	c->fpu_mask	= FPU_CSR_RSVD;

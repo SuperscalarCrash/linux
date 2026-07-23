@@ -13,6 +13,21 @@
 #ifndef __ASM_ASM_H
 #define __ASM_ASM_H
 
+#if defined(CONFIG_32BIT_REDUCED) && defined(__ASSEMBLER__)
+/*
+ * BEQZ/BNEZ belong to the standard/base LoongArch instruction set, not
+ * LA32R.  GNU as accepts them even with -march=la32rv1.0, so spell the
+ * equivalent LA32R register branches explicitly for assembly sources.
+ */
+	.macro beqz reg, target
+	beq	\reg, $r0, \target
+	.endm
+
+	.macro bnez reg, target
+	bne	\reg, $r0, \target
+	.endm
+#endif
+
 /* LoongArch pref instruction. */
 #ifdef CONFIG_CPU_HAS_PREFETCH
 

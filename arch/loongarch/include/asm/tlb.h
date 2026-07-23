@@ -156,6 +156,12 @@ extern void handle_tlb_store(void);
 extern void handle_tlb_modify(void);
 extern void handle_tlb_refill(void);
 extern void handle_tlb_protect(void);
+#ifdef CONFIG_32BIT_REDUCED
+extern void handle_tlb_load_from_common(void);
+extern void handle_tlb_store_from_common(void);
+extern void handle_tlb_modify_from_common(void);
+extern void handle_tlb_protect_from_common(void);
+#endif
 extern void handle_tlb_load_ptw(void);
 extern void handle_tlb_store_ptw(void);
 extern void handle_tlb_modify_ptw(void);

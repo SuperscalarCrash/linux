@@ -235,7 +235,12 @@ static int cfg_get(struct task_struct *target,
 
 	i = 0;
 	while (to.left > 0) {
+#ifdef CONFIG_32BIT_REDUCED
+		cfg_val = 0;
+		i++;
+#else
 		cfg_val = read_cpucfg(i++);
+#endif
 		r = membuf_write(&to, &cfg_val, sizeof(u32));
 	}
 

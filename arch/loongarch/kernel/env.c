@@ -22,6 +22,18 @@ EXPORT_SYMBOL(loongson_sysconf);
 
 void __init init_environ(void)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	/*
+	 * Chiplab U-Boot starts the ELF outside the EFI boot protocol. Its
+	 * argument registers are not an EFI firmware interface or a
+	 * command-line pointer. fdt_setup() and bootcmdline_init() supply
+	 * both below.
+	 */
+	clear_bit(EFI_BOOT, &efi.flags);
+	boot_command_line[0] = '\0';
+	init_command_line[0] = '\0';
+	efi_system_table = 0;
+#else
 	int efi_boot = fw_arg0;
 	char *cmdline = early_memremap_ro(fw_arg1, COMMAND_LINE_SIZE);
 
@@ -35,6 +47,7 @@ void __init init_environ(void)
 	early_memunmap(cmdline, COMMAND_LINE_SIZE);
 
 	efi_system_table = fw_arg2;
+#endif
 }
 
 static int __init init_cpu_fullname(void)
@@ -64,10 +77,23 @@ static int __init fdt_cpu_clk_init(void)
 {
 	struct clk *clk;
 	struct device_node *np;
+	u32 freq;
 
 	np = of_get_cpu_node(0, NULL);
 	if (!np)
 		return -ENODEV;
+
+	if (!of_property_read_u32(np, "clock-frequency", &freq)) {
+		cpu_clock_freq = freq;
+		of_node_put(np);
+		pr_info("CPU clock frequency: %llu Hz\n", cpu_clock_freq);
+		return 0;
+	}
+
+	if (cpu_clock_freq) {
+		of_node_put(np);
+		return 0;
+	}
 
 	clk = of_clk_get(np, 0);
 	of_node_put(np);
@@ -80,7 +106,7 @@ static int __init fdt_cpu_clk_init(void)
 
 	cpu_clock_freq = clk_get_rate(clk);
 	clk_put(clk);
-
+	pr_info("CPU clock frequency: %llu Hz\n", cpu_clock_freq);
 	return 0;
 }
 late_initcall(fdt_cpu_clk_init);

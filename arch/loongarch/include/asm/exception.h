@@ -42,6 +42,22 @@ asmlinkage void handle_lbt(void);
 asmlinkage void handle_watch(void);
 asmlinkage void handle_reserved(void);
 asmlinkage void handle_vint(void);
+#ifdef CONFIG_32BIT_REDUCED
+asmlinkage void handle_common(void);
+asmlinkage void handle_ade_from_common(void);
+asmlinkage void handle_ale_from_common(void);
+asmlinkage void handle_bce_from_common(void);
+asmlinkage void handle_bp_from_common(void);
+asmlinkage void handle_ri_from_common(void);
+asmlinkage void handle_fpu_from_common(void);
+asmlinkage void handle_fpe_from_common(void);
+asmlinkage void handle_lsx_from_common(void);
+asmlinkage void handle_lasx_from_common(void);
+asmlinkage void handle_lbt_from_common(void);
+asmlinkage void handle_watch_from_common(void);
+asmlinkage void handle_reserved_from_common(void);
+asmlinkage void handle_vint_from_common(void);
+#endif
 asmlinkage void noinstr handle_loongarch_irq(struct pt_regs *regs);
 
 #endif	/* __ASM_EXCEPTION_H */

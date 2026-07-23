@@ -10,6 +10,7 @@ LoongArch Architecture
 
    introduction
    booting
+   chiplab-la32r
    irq-chip-model
 
    features

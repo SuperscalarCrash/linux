@@ -53,7 +53,7 @@ static inline int arch_atomic_fetch_add_unless(atomic_t *v, int a, int u)
 		"	beq	%[p],  %[u], 1f\n"
 		"	add.w	%[rc], %[p], %[a]\n"
 		"	sc.w	%[rc], %[c]\n"
-		"	beqz	%[rc], 0b\n"
+		"	beq	%[rc], $zero, 0b\n"
 		"	b	2f\n"
 		"1:\n"
 		__WEAK_LLSC_MB
@@ -79,7 +79,7 @@ static inline int arch_atomic_sub_if_positive(int i, atomic_t *v)
 		"	move	%1, %0					\n"
 		"	bltz	%0, 2f					\n"
 		"	sc.w	%1, %2					\n"
-		"	beqz	%1, 1b					\n"
+		"	beq	%1, $zero, 1b				\n"
 		"2:							\n"
 		__WEAK_LLSC_MB
 		: "=&r" (result), "=&r" (temp), "+ZC" (v->counter)
@@ -91,7 +91,7 @@ static inline int arch_atomic_sub_if_positive(int i, atomic_t *v)
 		"	move	%1, %0					\n"
 		"	bltz	%0, 2f					\n"
 		"	sc.w	%1, %2					\n"
-		"	beqz	%1, 1b					\n"
+		"	beq	%1, $zero, 1b				\n"
 		"2:							\n"
 		__WEAK_LLSC_MB
 		: "=&r" (result), "=&r" (temp), "+ZC" (v->counter)
@@ -119,7 +119,7 @@ static inline long arch_atomic64_fetch_add_unless(atomic64_t *v, long a, long u)
 		"	beq	%[p],  %[u], 1f\n"
 		"	add.d	%[rc], %[p], %[a]\n"
 		"	sc.d	%[rc], %[c]\n"
-		"	beqz	%[rc], 0b\n"
+		"	beq	%[rc], $zero, 0b\n"
 		"	b	2f\n"
 		"1:\n"
 		__WEAK_LLSC_MB
@@ -145,7 +145,7 @@ static inline long arch_atomic64_sub_if_positive(long i, atomic64_t *v)
 		"	move	%1, %0					\n"
 		"	bltz	%0, 2f					\n"
 		"	sc.d	%1, %2					\n"
-		"	beqz	%1, 1b					\n"
+		"	beq	%1, $zero, 1b				\n"
 		"2:							\n"
 		__WEAK_LLSC_MB
 		: "=&r" (result), "=&r" (temp), "+ZC" (v->counter)
@@ -157,7 +157,7 @@ static inline long arch_atomic64_sub_if_positive(long i, atomic64_t *v)
 		"	move	%1, %0					\n"
 		"	bltz	%0, 2f					\n"
 		"	sc.d	%1, %2					\n"
-		"	beqz	%1, 1b					\n"
+		"	beq	%1, $zero, 1b				\n"
 		"2:							\n"
 		__WEAK_LLSC_MB
 		: "=&r" (result), "=&r" (temp), "+ZC" (v->counter)
