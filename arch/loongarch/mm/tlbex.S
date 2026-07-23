@@ -29,6 +29,20 @@
 	slli.w		\index, \index, \shift
 	add.w		\dest, \index, \base
 	.endm
+
+	/*
+	 * LA32R Gemmont implements the base TLB CSRs, but not the separate
+	 * TLB-refill CSR bank.  TLBEHI.VPPN contains every address bit needed
+	 * for page-table indexing, and tlbfill consumes TLBELO0/1, so perform
+	 * the refill entirely through the base CSR bank.
+	 */
+#define LOONGARCH_CSR_REFILL_BADV	LOONGARCH_CSR_TLBEHI
+#define LOONGARCH_CSR_REFILL_ELO0	LOONGARCH_CSR_TLBELO0
+#define LOONGARCH_CSR_REFILL_ELO1	LOONGARCH_CSR_TLBELO1
+#else
+#define LOONGARCH_CSR_REFILL_BADV	LOONGARCH_CSR_TLBRBADV
+#define LOONGARCH_CSR_REFILL_ELO0	LOONGARCH_CSR_TLBRELO0
+#define LOONGARCH_CSR_REFILL_ELO1	LOONGARCH_CSR_TLBRELO1
 #endif
 
 	.macro tlb_do_page_fault, write
@@ -681,14 +695,14 @@ SYM_CODE_START(handle_tlb_refill)
 	li.w		ra, 0x1fffffff
 
 	csrrd		t0, LOONGARCH_CSR_PGD
-	csrrd		t1, LOONGARCH_CSR_TLBRBADV
+	csrrd		t1, LOONGARCH_CSR_REFILL_BADV
 	srli.w		t1, t1, PGDIR_SHIFT
 	slli.w		t1, t1, 0x2
 	add.w		t0, t0, t1
 	and		t0, t0, ra
 
 	ld.w		t0, t0, 0
-	csrrd		t1, LOONGARCH_CSR_TLBRBADV
+	csrrd		t1, LOONGARCH_CSR_REFILL_BADV
 	slli.w		t1, t1, (32 - PGDIR_SHIFT)
 	srli.w		t1, t1, (32 - PGDIR_SHIFT + PAGE_SHIFT + 1)
 	slli.w		t1, t1, (0x2 + 1)
@@ -696,10 +710,10 @@ SYM_CODE_START(handle_tlb_refill)
 	and		t0, t0, ra
 
 	ld.w		t1, t0, 0x0
-	csrwr		t1, LOONGARCH_CSR_TLBRELO0
+	csrwr		t1, LOONGARCH_CSR_REFILL_ELO0
 
 	ld.w		t1, t0, 0x4
-	csrwr		t1, LOONGARCH_CSR_TLBRELO1
+	csrwr		t1, LOONGARCH_CSR_REFILL_ELO1
 
 	tlbfill
 	csrrd		t0, EXCEPTION_KS0
