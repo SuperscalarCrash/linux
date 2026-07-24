@@ -20,6 +20,7 @@
 #include <linux/completion.h>
 #include <linux/crc32.h>
 #include <linux/dma-mapping.h>
+#include <linux/iopoll.h>
 #include <asm/io.h>
 #include <linux/uaccess.h>
 #include <asm/irq.h>
@@ -200,7 +201,7 @@ static int dmfe_descriptor_init(struct net_device *dev);
 static void dmfe_set_phyxcer(struct net_device *dev);
 static u8 dmfe_sense_speed(struct net_device *dev);
 static void dmfe_process_mode(struct net_device *dev);
-static void update_csr6(u32 val, void *ioaddr);
+static void update_csr6(struct dmfe_private *tp, u32 val);
 static void send_filter_frame(struct net_device *dev, int mc_cnt);
 static void phy_write(void *iobase, u8 phy_addr, u8 offset, u16 phy_data, u32 chip_id);
 static void dmfe_timer(struct timer_list *t);
@@ -564,7 +565,7 @@ static void dmfe_hw_init(struct net_device *dev)
 	writel(tp->cr5_data, ioaddr + CSR5);
 
 	/* Init CR6 to program DM910x operation */
-	update_csr6(tp->cr6_data, tp->ioaddr+CSR6);
+	update_csr6(tp, tp->cr6_data);
 
 	send_filter_frame(dev, mc_count);	/* DM9102/DM9102A */
 
@@ -578,7 +579,7 @@ static void dmfe_hw_init(struct net_device *dev)
 	/* Enable DM910X Tx/Rx function */
 	tp->cr6_data |= CR6_RXSC | CR6_TXSC | 0x40000 | CR6_PM;  // | CR6_PBF;
 	//tp->cr6_data |= CR6_RXSC | CR6_TXSC | 0x40000;
-	update_csr6(tp->cr6_data, tp->ioaddr+CSR6);
+	update_csr6(tp, tp->cr6_data);
 #ifdef DBG_FLAG
 	printk("dmfe_hw_init===============================================>end\n");
 #endif
@@ -686,7 +687,7 @@ static void dmfe_set_filter_mode(struct net_device *dev)
 	if (dev->flags & IFF_PROMISC) {
 		printk("Enable PROM Mode\n");
 		tp->cr6_data |= CR6_PM | CR6_PBF;
-		update_csr6(tp->cr6_data, tp->ioaddr+CSR6);
+		update_csr6(tp, tp->cr6_data);
 		goto out;
 	}
 
@@ -1097,7 +1098,7 @@ static void dmfe_tx_clean(struct net_device *dev)
 					tp->stats.tx_errors++;
 					if (!(tp->cr6_data & CR6_SFT)) {
 						tp->cr6_data = tp->cr6_data | CR6_SFT;
-						update_csr6(tp->cr6_data, tp->ioaddr+CSR6);
+						update_csr6(tp, tp->cr6_data);
 					}
 				}
 				if (tdes0 & 0x0100) {
@@ -1175,7 +1176,7 @@ static irqreturn_t dmfe_interrupt (int irq, void *dev_instance)
 	if (tp->dm910x_chk_mode & 0x2) {
 		tp->dm910x_chk_mode = 0x4;
 		tp->cr6_data |= 0x100;
-		update_csr6(tp->cr6_data, tp->ioaddr + CSR6);
+		update_csr6(tp, tp->cr6_data);
 	}
 
 	handle = IRQ_HANDLED;
@@ -1253,9 +1254,9 @@ static void send_filter_frame(struct net_device *dev,int mc_cnt)
 
 	//dma_cache_wback((unsigned long)tx, sizeof(struct tx_desc));
 
-	update_csr6(tp->cr6_data | 0x2000, tp->ioaddr + CSR6);
+	update_csr6(tp, tp->cr6_data | 0x2000);
 	dw32(CSR1, 0x1);	/* Issue Tx polling */
-	update_csr6(tp->cr6_data, tp->ioaddr + CSR6);
+	update_csr6(tp, tp->cr6_data);
 	netif_trans_update(dev);
 	for (i = 0; i < TOUT_LOOP; i++) {
 		if (!(le32_to_cpu(tx->tdes0) & 0x80000000))
@@ -1308,9 +1309,9 @@ static void send_filter_frame2(struct net_device *dev, int mc_cnt)
 	tx->tdes2 = cpu_to_le32(dma_map_single(&dev->dev, skb->data, RX_BUF_SIZE, DMA_TO_DEVICE));
 	tx->tdes1 = cpu_to_le32(0x890000C0);
 	tx->tdes0 = cpu_to_le32(0x80000000);
-	update_csr6(tp->cr6_data | 0x2000, tp->ioaddr);
+	update_csr6(tp, tp->cr6_data | 0x2000);
 	dw32(CSR1, 0x1);	/* Issue Tx polling */
-	update_csr6(tp->cr6_data, tp->ioaddr);
+	update_csr6(tp, tp->cr6_data);
 	netif_trans_update(dev);
 	udelay(1000);
 
@@ -1370,7 +1371,7 @@ static void dmfe_timer(struct timer_list *t)
 		if (tp->media_mode & DMFE_AUTO) {
 			/* 10/100M link failed */
 			tp->cr6_data&=~0x00000200;      /* bit9=0, HD mode */
-			update_csr6(tp->cr6_data, tp->ioaddr);
+			update_csr6(tp, tp->cr6_data);
 		}
 	} else if ((tmp_cr12 & 0x3) && tp->link_failed) {
 		printk("dev %x:Link OK %x", tp->phy_addr,link_status);
@@ -1394,14 +1395,26 @@ static void dmfe_timer(struct timer_list *t)
 /*
  * update CSR6, firstly stop it then write new value and start.
  */
-static void update_csr6(u32 val, void *ioaddr)
+static void update_csr6(struct dmfe_private *tp, u32 val)
 {
-	writel((val & (~0x2002)), ioaddr);
-	udelay(5);
-	//writel((val | 0x2002), ioaddr);
-	writel((val | 0x602002), ioaddr);
+	u32 status;
+	int ret;
 
-	udelay(5);
+	writel(val & ~0x2002, tp->ioaddr + CSR6);
+
+	/*
+	 * The Chiplab MAC only latches a start request after both process
+	 * state machines have reached STOP.  A fixed delay is not sufficient
+	 * on the 72 MHz FPGA and can leave transmission permanently stopped.
+	 */
+	ret = readl_poll_timeout_atomic(tp->ioaddr + CSR5, status,
+				       !(status & GENMASK(22, 17)),
+				       1, 100000);
+	if (ret)
+		netdev_warn(tp->ndev, "timed out stopping MAC (CSR5=%#08x)\n",
+			    status);
+
+	writel(val | 0x602002, tp->ioaddr + CSR6);
 }
 
 static u8 dmfe_sense_speed(struct net_device *dev)
@@ -1518,7 +1531,7 @@ static void dmfe_process_mode(struct net_device *dev)
 	else
 		tp->cr6_data &= ~CR6_FDM;	/* Clear Full Duplex Bit */
 
-	update_csr6(tp->cr6_data, tp->ioaddr+CSR6);
+	update_csr6(tp, tp->cr6_data);
 }
 
 
