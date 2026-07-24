@@ -31,6 +31,9 @@ properties:
           - enum:
               - loongson,ls1a-nand-controller
           - const: loongson,ls1b-nand-controller
+      - items:
+          - const: loongson,chiplab-nand-controller
+          - const: loongson,ls1c-nand-controller
 
   reg:
     minItems: 2
@@ -48,6 +51,19 @@ properties:
 
   dma-names:
     const: rxtx
+
+patternProperties:
+  "^nand@[a-f0-9]$":
+    type: object
+    properties:
+      loongson,read-only-probe:
+        description:
+          Force the MTD device to be registered read-only and skip the
+          initial bad-block-table scan. This is intended for first-boot
+          diagnostics and non-destructive backup of media with unknown
+          contents. Remove the property before using erase, program, UBI,
+          or UBIFS operations.
+        type: boolean
 
 required:
   - compatible

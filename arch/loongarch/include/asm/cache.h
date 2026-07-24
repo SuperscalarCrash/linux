@@ -8,7 +8,7 @@
 #define L1_CACHE_SHIFT		CONFIG_L1_CACHE_SHIFT
 #define L1_CACHE_BYTES		(1 << L1_CACHE_SHIFT)
 
-#define ARCH_DMA_MINALIGN	(16)
+#define ARCH_DMA_MINALIGN	L1_CACHE_BYTES
 
 #define __read_mostly __section(".data..read_mostly")
 

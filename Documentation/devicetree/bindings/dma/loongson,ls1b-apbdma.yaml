@@ -22,17 +22,22 @@ properties:
               - loongson,ls1a-apbdma
               - loongson,ls1c-apbdma
           - const: loongson,ls1b-apbdma
+      - items:
+          - const: loongson,chiplab-apbdma
+          - const: loongson,ls1b-apbdma
 
   reg:
     maxItems: 1
 
   interrupts:
+    minItems: 1
     items:
       - description: NAND interrupt
       - description: Audio playback interrupt
       - description: Audio capture interrupt
 
   interrupt-names:
+    minItems: 1
     items:
       - const: ch0
       - const: ch1
@@ -47,6 +52,25 @@ required:
   - interrupts
   - interrupt-names
   - '#dma-cells'
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: loongson,chiplab-apbdma
+    then:
+      properties:
+        interrupts:
+          maxItems: 1
+        interrupt-names:
+          maxItems: 1
+    else:
+      properties:
+        interrupts:
+          minItems: 3
+        interrupt-names:
+          minItems: 3
 
 additionalProperties: false
 

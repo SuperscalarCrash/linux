@@ -71,6 +71,10 @@
 
 #define LOONGSON_NAND_READ_ID_SLEEP_US		1000
 #define LOONGSON_NAND_READ_ID_TIMEOUT_US	5000
+#define LOONGSON_NAND_DMA_TIMEOUT_MS		1000
+#define LOONGSON_NAND_OP_SLEEP_US		10
+#define LOONGSON_NAND_RESET_SLEEP_US		100
+#define LOONGSON_NAND_RESET_TIMEOUT_US		500000
 
 #define BITS_PER_WORD			(4 * BITS_PER_BYTE)
 
@@ -111,6 +115,7 @@ struct loongson_nand_data {
 	unsigned int wait_cycle;
 	unsigned int nand_cs;
 	unsigned int dma_bits;
+	bool dma_poll_only;
 	int (*dma_config)(struct device *dev);
 	void (*set_addr)(struct loongson_nand_host *host, struct loongson_nand_op *op);
 };
@@ -123,11 +128,18 @@ struct loongson_nand_host {
 	unsigned int addr_cs_field;
 	void __iomem *reg_base;
 	struct regmap *regmap;
+	bool read_only_probe;
+	bool controller_failed;
 	/* DMA Engine stuff */
+	phys_addr_t dma_phys;
 	dma_addr_t dma_base;
+	size_t dma_size;
+	bool dma_base_mapped;
+	struct device *dma_dev;
 	struct dma_chan *dma_chan;
 	dma_cookie_t dma_cookie;
 	struct completion dma_complete;
+	bool dma_active;
 };
 
 static const struct regmap_config loongson_nand_regmap_config = {
@@ -357,9 +369,11 @@ static void loongson_nand_trigger_op(struct loongson_nand_host *host, struct loo
 		op->cmd_reg |= LOONGSON_NAND_CMD_OP_SPARE;
 		op_scope += mtd->oobsize;
 
-		op_scope <<= __ffs(host->data->op_scope_field);
-		regmap_update_bits(host->regmap, LOONGSON_NAND_PARAM,
-				   host->data->op_scope_field, op_scope);
+		if (host->data->op_scope_field) {
+			op_scope <<= __ffs(host->data->op_scope_field);
+			regmap_update_bits(host->regmap, LOONGSON_NAND_PARAM,
+					   host->data->op_scope_field, op_scope);
+		}
 	}
 
 	/* set command */
@@ -379,12 +393,78 @@ static int loongson_nand_wait_for_op_done(struct loongson_nand_host *host,
 	if (op->rdy_timeout_ms) {
 		ret = regmap_read_poll_timeout(host->regmap, LOONGSON_NAND_CMD,
 					       val, val & LOONGSON_NAND_CMD_OP_DONE,
-					       0, op->rdy_timeout_ms * MSEC_PER_SEC);
+					       LOONGSON_NAND_OP_SLEEP_US,
+					       op->rdy_timeout_ms * MSEC_PER_SEC);
 		if (ret)
-			dev_err(host->dev, "operation failed\n");
+			dev_err(host->dev,
+				"operation %#x timed out after %u ms\n",
+				op->cmd_reg, op->rdy_timeout_ms);
 	}
 
 	return ret;
+}
+
+static int loongson_nand_reset(struct loongson_nand_host *host)
+{
+	unsigned int val;
+	int ret;
+
+	/*
+	 * Deassert VALID first.  On the Chiplab controller this also returns
+	 * the controller state machine and DMA request line to their idle
+	 * states, regardless of the operation that timed out.
+	 */
+	writel(0, host->reg_base + LOONGSON_NAND_CMD);
+	readl(host->reg_base + LOONGSON_NAND_CMD);
+	udelay(1);
+
+	writel(LOONGSON_NAND_CMD_RESET | LOONGSON_NAND_CMD_VALID,
+	       host->reg_base + LOONGSON_NAND_CMD);
+	ret = regmap_read_poll_timeout(host->regmap, LOONGSON_NAND_CMD, val,
+				       val & LOONGSON_NAND_CMD_OP_DONE,
+				       LOONGSON_NAND_RESET_SLEEP_US,
+				       LOONGSON_NAND_RESET_TIMEOUT_US);
+	writel(0, host->reg_base + LOONGSON_NAND_CMD);
+	if (ret)
+		dev_err(host->dev, "failed to reset NAND controller after timeout\n");
+
+	return ret;
+}
+
+static int loongson_nand_recover(struct loongson_nand_host *host, int cause)
+{
+	int dma_ret, reset_ret;
+
+	if (host->controller_failed) {
+		writel(0, host->reg_base + LOONGSON_NAND_CMD);
+		return cause;
+	}
+
+	/*
+	 * Stop DMA while the NAND request line is still active, then abort and
+	 * reset the NAND state machine.  This ordering lets the Chiplab DMA
+	 * engine reach one of the safe boundaries at which it samples STOP.
+	 */
+	dma_ret = 0;
+	if (host->dma_active) {
+		dma_ret = dmaengine_terminate_sync(host->dma_chan);
+		if (!dma_ret)
+			host->dma_active = false;
+	}
+	reset_ret = loongson_nand_reset(host);
+	reinit_completion(&host->dma_complete);
+
+	if (dma_ret || reset_ret) {
+		host->controller_failed = true;
+		dev_err(host->dev,
+			"timeout recovery failed (DMA: %d, NAND reset: %d); disabling controller\n",
+			dma_ret, reset_ret);
+		return dma_ret ?: reset_ret;
+	}
+
+	dev_warn(host->dev, "controller recovered after operation error: %d\n",
+		 cause);
+	return cause;
 }
 
 static void loongson_nand_dma_callback(void *data)
@@ -405,31 +485,41 @@ static void loongson_nand_dma_callback(void *data)
 
 static int loongson_nand_dma_transfer(struct loongson_nand_host *host, struct loongson_nand_op *op)
 {
-	struct nand_chip *chip = &host->chip;
 	struct dma_chan *chan = host->dma_chan;
-	struct device *dev = chan->device->dev;
+	struct device *dev = host->dma_dev;
 	struct dma_async_tx_descriptor *desc;
 	enum dma_data_direction data_dir = op->is_write ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	enum dma_transfer_direction xfer_dir = op->is_write ? DMA_MEM_TO_DEV : DMA_DEV_TO_MEM;
 	void *buf = op->buf;
 	char *dma_buf = NULL;
 	dma_addr_t dma_addr;
+	bool single_mapped = false;
+	bool dma_done = false;
+	enum dma_status status;
+	unsigned long deadline;
+	unsigned int dma_poll_count = 0;
+	unsigned int dma_alignment = dma_get_cache_alignment();
+	int terminate_ret;
 	int ret;
 
-	if (IS_ALIGNED((uintptr_t)buf, chip->buf_align) &&
-	    IS_ALIGNED(op->orig_len, chip->buf_align)) {
+	if (!op->aligned_offset &&
+	    IS_ALIGNED((uintptr_t)buf, dma_alignment) &&
+	    IS_ALIGNED(op->orig_len, dma_alignment)) {
 		dma_addr = dma_map_single(dev, buf, op->orig_len, data_dir);
 		if (dma_mapping_error(dev, dma_addr)) {
 			dev_err(dev, "failed to map DMA buffer\n");
 			return -ENXIO;
 		}
-	} else if (!op->is_write) {
+		single_mapped = true;
+	} else {
 		dma_buf = dma_alloc_coherent(dev, op->len, &dma_addr, GFP_KERNEL);
 		if (!dma_buf)
 			return -ENOMEM;
-	} else {
-		dev_err(dev, "subpage writing not supported\n");
-		return -EOPNOTSUPP;
+
+		if (op->is_write) {
+			memset(dma_buf, 0xff, op->len);
+			memcpy(dma_buf + op->aligned_offset, buf, op->orig_len);
+		}
 	}
 
 	desc = dmaengine_prep_slave_single(chan, dma_addr, op->len, xfer_dir, DMA_PREP_INTERRUPT);
@@ -441,6 +531,7 @@ static int loongson_nand_dma_transfer(struct loongson_nand_host *host, struct lo
 	desc->callback = loongson_nand_dma_callback;
 	desc->callback_param = host;
 
+	reinit_completion(&host->dma_complete);
 	host->dma_cookie = dmaengine_submit(desc);
 	ret = dma_submit_error(host->dma_cookie);
 	if (ret) {
@@ -449,21 +540,81 @@ static int loongson_nand_dma_transfer(struct loongson_nand_host *host, struct lo
 	}
 
 	dev_dbg(dev, "issue DMA with cookie=%d\n", host->dma_cookie);
+	host->dma_active = true;
 	dma_async_issue_pending(chan);
 
-	if (!wait_for_completion_timeout(&host->dma_complete, msecs_to_jiffies(1000))) {
-		dmaengine_terminate_sync(chan);
-		reinit_completion(&host->dma_complete);
+	/*
+	 * Prefer the completion interrupt, but periodically query the DMA
+	 * engine as a fallback.  Chiplab exposes the interrupt as a short
+	 * pulse which can be missed by a CPU clock-domain crossing.
+	 */
+	deadline = jiffies + msecs_to_jiffies(LOONGSON_NAND_DMA_TIMEOUT_MS);
+	do {
+		if (host->data->dma_poll_only) {
+			udelay(100);
+			if (!(++dma_poll_count % 100))
+				cond_resched();
+		} else if (wait_for_completion_timeout(&host->dma_complete,
+						       msecs_to_jiffies(10))) {
+			dma_done = true;
+			break;
+		}
+
+		if (try_wait_for_completion(&host->dma_complete)) {
+			dma_done = true;
+			break;
+		}
+
+		status = dmaengine_tx_status(chan, host->dma_cookie, NULL);
+		if (status == DMA_COMPLETE) {
+			dma_done = true;
+			break;
+		}
+		if (status == DMA_ERROR) {
+			dev_err(dev, "DMA failed with cookie=%d\n", host->dma_cookie);
+			ret = -EIO;
+			goto terminate;
+		}
+	} while (time_before(jiffies, deadline));
+
+	if (!dma_done) {
+		dev_err(dev, "DMA timed out with cookie=%d\n", host->dma_cookie);
 		ret = -ETIMEDOUT;
-		goto err;
+		goto terminate;
 	}
+
+	status = dmaengine_tx_status(chan, host->dma_cookie, NULL);
+	if (status != DMA_COMPLETE) {
+		dev_err(dev, "DMA completed with status %u\n", status);
+		ret = -EIO;
+		goto terminate;
+	}
+	dmaengine_synchronize(chan);
+	host->dma_active = false;
 
 	if (dma_buf)
 		memcpy(buf, dma_buf + op->aligned_offset, op->orig_len);
+	goto err;
+
+terminate:
+	terminate_ret = dmaengine_terminate_sync(chan);
+	if (terminate_ret) {
+		/*
+		 * Do not unmap memory which a DMA engine might still access.
+		 * Poison the controller and intentionally keep the mapping
+		 * until the device is reset.
+		 */
+		host->controller_failed = true;
+		writel(0, host->reg_base + LOONGSON_NAND_CMD);
+		dev_err(dev, "DMA termination failed: %d; controller disabled\n",
+			terminate_ret);
+		return terminate_ret;
+	}
+	host->dma_active = false;
 err:
 	if (dma_buf)
 		dma_free_coherent(dev, op->len, dma_buf, dma_addr);
-	else
+	else if (single_mapped)
 		dma_unmap_single(dev, dma_addr, op->orig_len, data_dir);
 
 	return ret;
@@ -483,9 +634,13 @@ static int loongson_nand_data_type_exec(struct nand_chip *chip, const struct nan
 
 	ret = loongson_nand_dma_transfer(host, &op);
 	if (ret)
-		return ret;
+		return loongson_nand_recover(host, ret);
 
-	return loongson_nand_wait_for_op_done(host, &op);
+	ret = loongson_nand_wait_for_op_done(host, &op);
+	if (ret)
+		return loongson_nand_recover(host, ret);
+
+	return 0;
 }
 
 static int loongson_nand_misc_type_exec(struct nand_chip *chip, const struct nand_subop *subop,
@@ -500,7 +655,16 @@ static int loongson_nand_misc_type_exec(struct nand_chip *chip, const struct nan
 
 	loongson_nand_trigger_op(host, op);
 
-	return loongson_nand_wait_for_op_done(host, op);
+	ret = loongson_nand_wait_for_op_done(host, op);
+	if (ret) {
+		if (op->cmd_reg != LOONGSON_NAND_CMD_RESET)
+			return loongson_nand_recover(host, ret);
+
+		writel(0, host->reg_base + LOONGSON_NAND_CMD);
+		host->controller_failed = true;
+	}
+
+	return ret;
 }
 
 static int loongson_nand_zerolen_type_exec(struct nand_chip *chip, const struct nand_subop *subop)
@@ -531,7 +695,7 @@ static int loongson_nand_read_id_type_exec(struct nand_chip *chip, const struct 
 				       LOONGSON_NAND_READ_ID_SLEEP_US,
 				       LOONGSON_NAND_READ_ID_TIMEOUT_US);
 	if (ret)
-		return ret;
+		return loongson_nand_recover(host, ret);
 
 	nand_id.idh = readw(host->reg_base + LOONGSON_NAND_IDH_STATUS);
 
@@ -553,8 +717,8 @@ static int loongson_nand_read_status_type_exec(struct nand_chip *chip,
 		return ret;
 
 	val = readl(host->reg_base + LOONGSON_NAND_IDH_STATUS);
-	val &= ~host->data->status_field;
-	op.buf[0] = val << ffs(host->data->status_field);
+	op.buf[0] = (val & host->data->status_field) >>
+		    __ffs(host->data->status_field);
 
 	return ret;
 }
@@ -650,8 +814,33 @@ static int loongson_nand_check_op(struct nand_chip *chip, const struct nand_oper
 static int loongson_nand_exec_op(struct nand_chip *chip, const struct nand_operation *op,
 				 bool check_only)
 {
+	struct loongson_nand_host *host = nand_get_controller_data(chip);
+	unsigned int i;
+
 	if (check_only)
 		return loongson_nand_check_op(chip, op);
+
+	if (host->controller_failed)
+		return -EIO;
+
+	if (host->read_only_probe) {
+		for (i = 0; i < op->ninstrs; i++) {
+			const struct nand_op_instr *instr = &op->instrs[i];
+
+			if (instr->type != NAND_OP_CMD_INSTR)
+				continue;
+
+			switch (instr->ctx.cmd.opcode) {
+			case NAND_CMD_SEQIN:
+			case NAND_CMD_PAGEPROG:
+			case NAND_CMD_ERASE1:
+			case NAND_CMD_ERASE2:
+				return -EROFS;
+			default:
+				break;
+			}
+		}
+	}
 
 	return nand_op_parser_exec_op(chip, &loongson_nand_op_parser, op, check_only);
 }
@@ -764,6 +953,9 @@ static const struct nand_controller_ops loongson_nand_controller_ops = {
 
 static void loongson_nand_controller_cleanup(struct loongson_nand_host *host)
 {
+	if (host->dma_base_mapped)
+		dma_unmap_resource(host->dma_dev, host->dma_base, host->dma_size,
+				   DMA_BIDIRECTIONAL, 0);
 	if (host->dma_chan)
 		dma_release_channel(host->dma_chan);
 }
@@ -823,6 +1015,14 @@ static int loongson_nand_controller_init(struct loongson_nand_host *host)
 	if (IS_ERR(chan))
 		return dev_err_probe(dev, PTR_ERR(chan), "failed to request DMA channel\n");
 	host->dma_chan = chan;
+	host->dma_dev = dmaengine_get_dma_device(chan);
+
+	host->dma_base = dma_map_resource(host->dma_dev, host->dma_phys,
+					  host->dma_size, DMA_BIDIRECTIONAL, 0);
+	if (dma_mapping_error(host->dma_dev, host->dma_base))
+		return dev_err_probe(dev, -ENXIO,
+				     "failed to map NAND aperture for DMA\n");
+	host->dma_base_mapped = true;
 
 	cfg.src_addr = host->dma_base;
 	cfg.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
@@ -853,6 +1053,8 @@ static int loongson_nand_chip_init(struct loongson_nand_host *host)
 	if (!chip_np)
 		return dev_err_probe(dev, -ENODEV, "failed to get child node for NAND chip\n");
 
+	host->read_only_probe =
+		of_property_read_bool(chip_np, "loongson,read-only-probe");
 	nand_set_flash_node(chip, chip_np);
 	of_node_put(chip_np);
 	if (!mtd->name)
@@ -861,6 +1063,11 @@ static int loongson_nand_chip_init(struct loongson_nand_host *host)
 	nand_set_controller_data(chip, host);
 	chip->controller = &host->controller;
 	chip->options = NAND_NO_SUBPAGE_WRITE | NAND_USES_DMA | NAND_BROKEN_XD;
+	if (host->read_only_probe) {
+		chip->options |= NAND_ROM | NAND_SKIP_BBTSCAN;
+		dev_info(dev,
+			 "read-only probe mode enabled; skipping initial BBT scan\n");
+	}
 	chip->buf_align = 16;
 	mtd->dev.parent = dev;
 	mtd->owner = THIS_MODULE;
@@ -902,10 +1109,8 @@ static int loongson_nand_probe(struct platform_device *pdev)
 	if (!res)
 		return dev_err_probe(dev, -EINVAL, "Missing 'nand-dma' in reg-names property\n");
 
-	host->dma_base = dma_map_resource(dev, res->start, resource_size(res),
-					  DMA_BIDIRECTIONAL, 0);
-	if (dma_mapping_error(dev, host->dma_base))
-		return -ENXIO;
+	host->dma_phys = res->start;
+	host->dma_size = resource_size(res);
 
 	host->dev = dev;
 	host->data = data;
@@ -962,6 +1167,18 @@ static const struct loongson_nand_data ls1c_nand_data = {
 	.set_addr = ls1c_nand_set_addr,
 };
 
+static const struct loongson_nand_data chiplab_nand_data = {
+	.max_id_cycle = 5,
+	.id_cycle_field = GENMASK(14, 12),
+	.status_field = GENMASK(23, 16),
+	.op_scope_field = GENMASK(29, 16),
+	.hold_cycle = 0x4,
+	.wait_cycle = 0x12,
+	.dma_bits = 32,
+	.dma_poll_only = true,
+	.set_addr = ls1c_nand_set_addr,
+};
+
 static const struct loongson_nand_data ls2k0500_nand_data = {
 	.max_id_cycle = 6,
 	.id_cycle_field = GENMASK(14, 12),
@@ -987,6 +1204,10 @@ static const struct loongson_nand_data ls2k1000_nand_data = {
 };
 
 static const struct of_device_id loongson_nand_match[] = {
+	{
+		.compatible = "loongson,chiplab-nand-controller",
+		.data = &chiplab_nand_data,
+	},
 	{
 		.compatible = "loongson,ls1b-nand-controller",
 		.data = &ls1b_nand_data,

@@ -66,5 +66,53 @@
 			local-mac-address = [00 98 76 64 32 19];
 			phy-mode = "rgmii";
 		};
+
+		dma0: dma-controller@1fd01160 {
+			compatible = "loongson,chiplab-apbdma",
+				     "loongson,ls1b-apbdma";
+			reg = <0x1fd01160 0x4>;
+			interrupt-parent = <&cpuic>;
+			interrupts = <6>;
+			interrupt-names = "ch0";
+			#dma-cells = <1>;
+		};
+
+		nand_controller: nand-controller@1fe78000 {
+			compatible = "loongson,chiplab-nand-controller",
+				     "loongson,ls1c-nand-controller";
+			reg = <0x1fe78000 0x24>,
+			      <0x1fe78040 0x4>;
+			reg-names = "nand", "nand-dma";
+			dmas = <&dma0 0>;
+			dma-names = "rxtx";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			nand@0 {
+				reg = <0>;
+				label = "chiplab-nand";
+				nand-use-soft-ecc-engine;
+				nand-ecc-algo = "hamming";
+				nand-ecc-strength = <1>;
+				nand-ecc-step-size = <256>;
+
+				partitions {
+					compatible = "fixed-partitions";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					partition@0 {
+						label = "kernel";
+						reg = <0x00000000 0x01400000>;
+						read-only;
+					};
+
+					partition@1400000 {
+						label = "ubi";
+						reg = <0x01400000 0x06c00000>;
+					};
+				};
+			};
+		};
 	};
 };

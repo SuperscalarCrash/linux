@@ -19,6 +19,9 @@ for a network-booted initramfs system:
 * an NS16550-compatible UART at ``0x1fe001e0``, IRQ 3, with a 33 MHz input
   clock and a 115200 baud console;
 * the Chiplab DM9102-compatible Ethernet MAC at ``0x1ff00000``, IRQ 2;
+* the Chiplab APB DMA controller at ``0x1fd01160``;
+* the 128 MiB SLC NAND controller at ``0x1fe78000``, with a read-only kernel
+  partition followed by a writable UBI partition;
 * the direct LoongArch CPU interrupt controller.
 
 The reduced kernel profile describes Gemmont's fixed implementation
@@ -37,6 +40,58 @@ The exception path also follows the reduced architecture: ECFG vector spacing
 is not used.  A compact common EENTRY dispatcher reads ESTAT and forwards
 interrupts and exception codes to the Linux handlers in software.
 
+NAND, DMA and persistent storage
+================================
+
+The NAND controller transfers page data through the Loongson-1 APB DMA
+engine.  Gemmont is non-coherent, so the driver maps buffers through the DMA
+device and uses the architecture's cache-maintenance operations before and
+after every transfer.  The DMA minimum allocation alignment matches the
+64-byte data-cache line, and unaligned or partial-page requests use an aligned
+bounce buffer.
+
+The FPGA DMA interrupt is a short pulse and can disappear before the CPU
+reads its interrupt status.  The Chiplab compatible therefore completes
+one-shot transfers by polling the controller's ASK snapshot.  This mode does
+not advertise cyclic DMA period notifications.  Every start, status query,
+NAND operation and recovery path has a bounded timeout.  A timed-out request
+is stopped before its mapping is released, the NAND state machine is reset,
+and the controller is disabled if DMA ownership cannot be recovered safely.
+
+The initial bring-up device tree may add ``loongson,read-only-probe`` and
+``nand-no-ecc-engine`` to inspect or back up existing media without scanning
+bad-block markers or issuing program/erase commands.  This is a migration
+mode only.  The normal device tree enables software Hamming ECC, exposes a
+read-only ``kernel`` partition and reserves the rest of the device for UBI.
+UBI/UBIFS must be used for writable filesystems so erase counts and bad
+blocks are managed correctly; a raw NAND block device is deliberately not
+enabled.
+
+Before changing an unknown board's NAND contents, make a raw backup including
+OOB data and verify its byte count and checksum.  For a 128 MiB device with
+2 KiB pages and 64-byte OOB, a padded full-device dump is 138412032 bytes.
+Keep the dump and its checksum off-board.  Never format or erase the
+``kernel`` partition when preparing UBI.
+
+The normal kernel configuration does not retain the partitioned master MTD
+device.  This prevents raw access to the whole chip from bypassing the
+``kernel`` partition's read-only flag.  In read-only migration mode, dump the
+two partitions separately if a complete backup is required.
+
+On the normal device tree the expected devices are ``mtd0`` (``kernel``,
+read-only) and ``mtd1`` (``ubi``, writable).  If the UBI partition is known to
+be empty or has first been prepared with ``ubiformat``, create and mount a
+root filesystem with mtd-utils or the equivalent BusyBox applets::
+
+  ubiattach /dev/ubi_ctrl -m 1
+  ubimkvol /dev/ubi0 -N rootfs -m
+  mount -t ubifs ubi0:rootfs /mnt
+
+Do not run ``ubiformat`` on a partition containing data that has not been
+backed up.  After the volume has been populated and checked, a persistent-root
+boot can add ``ubi.mtd=ubi root=ubi0:rootfs rootfstype=ubifs`` to the kernel
+command line.
+
 Source history audit
 ====================
 
@@ -49,6 +104,9 @@ The following board-specific work is represented here:
 
 * ``f99dddc5``: non-coherent DMA and data-cache
   writeback/invalidation;
+* ``3d0b9aa7``: the Loongson NAND and APB DMA controller support, adapted
+  here to the Chiplab register layout, non-coherent DMA API and bounded
+  timeout recovery;
 * ``3d0b9aa7``, ``f363de7b``, ``fd39596b`` and ``9a47584e``: the Chiplab
   platform DMFE driver, including store-and-forward operation;
 * ``65b59ce1``: direct CPU interrupt delivery, implemented here by the
@@ -67,12 +125,10 @@ Baixin-only changes (``2a7d4c8e``, ``8d8b7339``, ``072ad81f``,
 ``30e91481``, ``52423549``, ``bc4f0cd``, ``a70ac108``, ``7435dbc5`` and
 their merge commits) are intentionally excluded.  In particular,
 ``bc4f0cd`` became a ``BX_SOC``-only whole-cache workaround in the final
-merged source and is not needed by the Loongson Chiplab design.  The LS1A
-NAND driver from ``3d0b9aa7`` is also excluded: it is not required for
-TFTP/initramfs boot and the board controller currently stalls while scanning
-NAND bad blocks.  The old physical boot-argument workaround in ``7ae1318a``
-is unnecessary because this port uses a built-in DT and deliberately ignores
-non-EFI U-Boot argument registers.
+merged source and is not needed by the Loongson Chiplab design.  The old
+physical boot-argument workaround in ``7ae1318a`` is unnecessary because this
+port uses a built-in DT and deliberately ignores non-EFI U-Boot argument
+registers.
 
 Building with GCC 16
 ====================
