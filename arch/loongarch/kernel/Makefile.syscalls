@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 
-syscall_abis_32 += memfd_secret
+# LA32/LA32R user space predates the time64-only 32-bit ABI.  Keep the
+# time32, stat64 and legacy rlimit entries that its libc was built against.
+syscall_abis_32 += time32 stat64 rlimit memfd_secret
 syscall_abis_64 += memfd_secret
