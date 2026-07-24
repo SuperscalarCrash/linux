@@ -108,6 +108,30 @@ Every executable in that root filesystem, including ``/init``, must use the
 LA32R soft-float ABI.  An LA32S or LA64 executable will fault with a reserved
 instruction when the kernel starts init.
 
+Tagged GitHub releases
+======================
+
+Pushing a semantic version tag such as ``v0.1.0`` starts the
+``Chiplab LA32R Linux release`` GitHub Actions workflow.  Before creating the
+first tag, define the positive integer Actions repository variable
+``CHIPLAB_CPU_HZ``.  This keeps the FPGA-specific clock outside the device
+tree while ensuring that every published kernel has a usable timer frequency.
+
+The workflow builds or restores a cached GCC 16.1.0 and Binutils 2.46.1
+``loongarch32-linux-gnusf`` toolchain, then builds the kernel, modules and
+device trees.  A tag named ``v0.1.0`` produces this exact kernel release
+string::
+
+  7.1.4-SuperscalarCrach-la32r-v0.1.0
+
+The GitHub Release contains the loadable ``vmlinux`` ELF, standalone Chiplab
+DTB, ``System.map``, kernel configuration, installed modules, UAPI headers, a
+complete installation bundle and SHA-256 checksums.  The GCC installation is
+kept in the Actions cache and is rebuilt only when its version or build script
+changes.  A push changing the toolchain script or release workflow on the
+default branch warms that branch's cache, allowing subsequent version tags to
+reuse it despite GitHub's per-tag cache isolation.
+
 U-Boot network boot
 ===================
 

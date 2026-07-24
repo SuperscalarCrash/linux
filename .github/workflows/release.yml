@@ -1,0 +1,300 @@
+name: Chiplab LA32R Linux release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/release.yml"
+      - "scripts/ci/build-gcc16-la32r.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chiplab-linux-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GCC_VERSION: "16.1.0"
+  BINUTILS_VERSION: "2.46.1"
+  TARGET: loongarch32-linux-gnusf
+  TOOLCHAIN_PREFIX: ${{ github.workspace }}/.ci-toolchain/gcc-16.1.0-loongarch
+
+jobs:
+  prepare:
+    name: Validate release inputs
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CHIPLAB_CPU_HZ: ${{ vars.CHIPLAB_CPU_HZ }}
+    outputs:
+      kernel_release: ${{ steps.release.outputs.kernel_release }}
+      localversion: ${{ steps.release.outputs.localversion }}
+      cpu_hz: ${{ steps.release.outputs.cpu_hz }}
+    steps:
+      - name: Check out Linux tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve release version and clock
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Release tags must look like v0.1.0; got ${tag}" >&2
+            exit 1
+          fi
+
+          if [[ ! "${CHIPLAB_CPU_HZ}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Set the CHIPLAB_CPU_HZ Actions repository variable to the tagged FPGA CPU frequency." >&2
+            exit 1
+          fi
+
+          kernel_version="$(make -s kernelversion)"
+          localversion="-SuperscalarCrach-la32r-${tag}"
+          kernel_release="${kernel_version}${localversion}"
+
+          if ((${#kernel_release} > 64)); then
+            echo "Kernel release is longer than UTS_RELEASE allows: ${kernel_release}" >&2
+            exit 1
+          fi
+
+          {
+            echo "kernel_release=${kernel_release}"
+            echo "localversion=${localversion}"
+            echo "cpu_hz=${CHIPLAB_CPU_HZ}"
+          } >>"${GITHUB_OUTPUT}"
+
+          echo "Building ${kernel_release} at ${CHIPLAB_CPU_HZ} Hz"
+
+  toolchain:
+    name: Build or restore GCC 16 LA32R toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out toolchain build script
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore GCC toolchain cache
+        id: gcc-cache
+        uses: actions/cache@v4
+        with:
+          path: .ci-toolchain/gcc-16.1.0-loongarch
+          key: la32r-${{ runner.os }}-${{ runner.arch }}-gcc-${{ env.GCC_VERSION }}-binutils-${{ env.BINUTILS_VERSION }}-${{ hashFiles('scripts/ci/build-gcc16-la32r.sh') }}
+
+      - name: Install GCC build dependencies
+        if: steps.gcc-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential curl xz-utils \
+            libgmp-dev libisl-dev libmpc-dev libmpfr-dev texinfo
+
+      - name: Build GCC 16 and Binutils
+        if: steps.gcc-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOBS="$(nproc)" ./scripts/ci/build-gcc16-la32r.sh \
+            "${TOOLCHAIN_PREFIX}"
+
+      - name: Validate cached toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$("${TOOLCHAIN_PREFIX}/bin/${TARGET}-gcc" -dumpmachine)" = "${TARGET}"
+          test "$("${TOOLCHAIN_PREFIX}/bin/${TARGET}-gcc" -dumpfullversion)" = "${GCC_VERSION}"
+          "${TOOLCHAIN_PREFIX}/bin/${TARGET}-gcc" -v
+          "${TOOLCHAIN_PREFIX}/bin/${TARGET}-ld" --version | sed -n '1p'
+
+  kernel:
+    name: Build and package Linux ${{ needs.prepare.outputs.kernel_release }}
+    needs: [prepare, toolchain]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ARCH: loongarch
+      CROSS_COMPILE: ${{ github.workspace }}/.ci-toolchain/gcc-16.1.0-loongarch/bin/loongarch32-linux-gnusf-
+      LOCALVERSION: ""
+      KBUILD_BUILD_USER: github-actions
+      KBUILD_BUILD_HOST: SuperscalarCrach
+      KBUILD_BUILD_VERSION: "1"
+      RELEASE_TAG: ${{ github.ref_name }}
+      SOURCE_COMMIT: ${{ github.sha }}
+      CPU_HZ: ${{ needs.prepare.outputs.cpu_hz }}
+    steps:
+      - name: Check out Linux tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore GCC toolchain cache
+        id: gcc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci-toolchain/gcc-16.1.0-loongarch
+          key: la32r-${{ runner.os }}-${{ runner.arch }}-gcc-${{ env.GCC_VERSION }}-binutils-${{ env.BINUTILS_VERSION }}-${{ hashFiles('scripts/ci/build-gcc16-la32r.sh') }}
+          fail-on-cache-miss: true
+
+      - name: Install kernel build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bc bison flex kmod libelf-dev libssl-dev rsync zstd
+
+      - name: Configure tagged LA32R kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="${RUNNER_TEMP}/linux-build"
+
+          make O="${build}" chiplab_la32r_defconfig
+          scripts/config --file "${build}/.config" \
+            --set-str LOCALVERSION "${{ needs.prepare.outputs.localversion }}"
+          scripts/config --file "${build}/.config" --disable LOCALVERSION_AUTO
+          scripts/config --file "${build}/.config" --enable MODULES
+          scripts/config --file "${build}/.config" --set-str CMDLINE \
+            "console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 rdinit=/init cpuclock=${CPU_HZ}"
+          make O="${build}" olddefconfig
+          make O="${build}" syncconfig
+
+          actual_release="$(make -s O="${build}" kernelrelease)"
+          test "${actual_release}" = "${{ needs.prepare.outputs.kernel_release }}"
+          grep -Fx "CONFIG_LOCALVERSION=\"${{ needs.prepare.outputs.localversion }}\"" \
+            "${build}/.config"
+          grep -Fx "CONFIG_MODULES=y" "${build}/.config"
+          grep -F "cpuclock=${CPU_HZ}" "${build}/.config"
+
+      - name: Build kernel, modules, and device trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="${RUNNER_TEMP}/linux-build"
+          export KBUILD_BUILD_TIMESTAMP
+          KBUILD_BUILD_TIMESTAMP="$(git show -s --format=%cI "${GITHUB_SHA}")"
+          make O="${build}" -j"$(nproc)" vmlinux modules dtbs
+
+      - name: Verify kernel identity and ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="${RUNNER_TEMP}/linux-build"
+          expected="${{ needs.prepare.outputs.kernel_release }}"
+
+          test "$(make -s O="${build}" kernelrelease)" = "${expected}"
+          "${CROSS_COMPILE}readelf" -h "${build}/vmlinux" \
+            | tee "${RUNNER_TEMP}/elf-header.txt"
+          grep -F "ELF32" "${RUNNER_TEMP}/elf-header.txt"
+          grep -F "LoongArch" "${RUNNER_TEMP}/elf-header.txt"
+          "${CROSS_COMPILE}strings" "${build}/vmlinux" \
+            >"${RUNNER_TEMP}/vmlinux.strings"
+          grep -F -m1 "Linux version ${expected}" \
+            "${RUNNER_TEMP}/vmlinux.strings"
+          test -s "${build}/arch/loongarch/boot/dts/loongson-chiplab.dtb"
+
+      - name: Package release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "${GITHUB_SHA}")"
+          ./scripts/ci/package-chiplab-release.sh \
+            "${RUNNER_TEMP}/linux-build" \
+            "${RUNNER_TEMP}/release" \
+            "${{ needs.prepare.outputs.kernel_release }}"
+          cd "${RUNNER_TEMP}/release"
+          sha256sum --check SHA256SUMS
+
+      - name: Add build information to job summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '```text'
+            cat "${RUNNER_TEMP}/release/BUILD_INFO.txt"
+            echo '```'
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload Linux release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ needs.prepare.outputs.kernel_release }}
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish Linux GitHub Release
+    needs: [prepare, kernel]
+    if: needs.kernel.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux release files
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ needs.prepare.outputs.kernel_release }}
+          path: release
+
+      - name: Verify release checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS
+
+      - name: Render release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Gemmont Chiplab strict-LA32R Linux release."
+            echo
+            echo '```text'
+            cat release/BUILD_INFO.txt
+            echo '```'
+            echo
+            echo "- \`vmlinux-*\`: ELF kernel for U-Boot \`bootelf\`"
+            echo "- \`loongson-chiplab-*.dtb\`: standalone board device tree"
+            echo "- \`modules-*.tar.zst\`: installed kernel modules and metadata"
+            echo "- \`headers-*.tar.zst\`: installed LoongArch UAPI headers"
+            echo "- \`linux-*-loongarch32.tar.zst\`: complete installation bundle"
+          } >release/release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Linux ${{ needs.prepare.outputs.kernel_release }}
+          body_path: release/release-notes.md
+          generate_release_notes: true
+          files: |
+            release/BUILD_INFO.txt
+            release/SHA256SUMS
+            release/System.map-*
+            release/config-*
+            release/headers-*.tar.zst
+            release/linux-*.tar.zst
+            release/loongson-chiplab-*.dtb
+            release/modules-*.tar.zst
+            release/vmlinux-*
