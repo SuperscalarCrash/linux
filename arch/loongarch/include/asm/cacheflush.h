@@ -34,23 +34,44 @@ static inline unsigned int cpu_last_level_cache_line_size(void)
 asmlinkage void __flush_cache_all(void);
 
 /*
- * LoongArch maintains ICache/DCache coherency by hardware,
- * we just need "ibar" to avoid instruction hazard here.
+ * Full LoongArch implementations maintain ICache/DCache coherency in
+ * hardware.  LA32R does not require that feature, and Gemmont implements
+ * private, non-coherent instruction and data caches.
  */
 static inline void local_flush_icache_all(void)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	__flush_cache_all();
+#else
 	asm volatile ("ibar\t0\n"::);
+#endif
 }
 
 static inline void local_flush_icache_range(unsigned long start, unsigned long end)
 {
+#ifdef CONFIG_32BIT_REDUCED
+	__flush_cache_all();
+#else
 	asm volatile ("ibar\t0\n"::);
+#endif
 }
 
 #define flush_icache_all	local_flush_icache_all
 #define flush_icache_range	local_flush_icache_range
 #define flush_icache_user_range	local_flush_icache_range
 
+#ifdef CONFIG_32BIT_REDUCED
+#define flush_cache_all()				__flush_cache_all()
+#define flush_cache_mm(mm)				__flush_cache_all()
+#define flush_cache_dup_mm(mm)				__flush_cache_all()
+#define flush_cache_range(vma, start, end)		__flush_cache_all()
+#define flush_cache_page(vma, vmaddr, pfn)		__flush_cache_all()
+#define flush_cache_vmap(start, end)			__flush_cache_all()
+#define flush_cache_vunmap(start, end)			__flush_cache_all()
+#define flush_icache_user_page(vma, page, addr, len)	__flush_cache_all()
+#define flush_dcache_page(page)				__flush_cache_all()
+#define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE		1
+#else
 #define flush_cache_all()				do { } while (0)
 #define flush_cache_mm(mm)				do { } while (0)
 #define flush_cache_dup_mm(mm)				do { } while (0)
@@ -59,6 +80,7 @@ static inline void local_flush_icache_range(unsigned long start, unsigned long e
 #define flush_cache_vmap(start, end)			do { } while (0)
 #define flush_cache_vunmap(start, end)			do { } while (0)
 #define flush_icache_user_page(vma, page, addr, len)	do { } while (0)
+#endif
 #define flush_dcache_mmap_lock(mapping)			do { } while (0)
 #define flush_dcache_mmap_unlock(mapping)		do { } while (0)
 

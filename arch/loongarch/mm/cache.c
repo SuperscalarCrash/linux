@@ -59,6 +59,19 @@ asmlinkage __visible void __flush_cache_all(void)
 	struct cache_desc *cdesc = current_cpu_data.cache_leaves;
 	unsigned int cache_present = current_cpu_data.cache_leaves_present;
 
+#ifdef CONFIG_32BIT_REDUCED
+	/*
+	 * Gemmont has separate, non-coherent L1 caches.  Write dirty data back
+	 * before invalidating instructions so freshly populated executable
+	 * pages are visible to the instruction cache.
+	 */
+	flush_cache_leaf(1);
+	asm volatile ("dbar\t0\n"::);
+	flush_cache_leaf(0);
+	asm volatile ("ibar\t0\n"::);
+	return;
+#endif
+
 	leaf = cache_present - 1;
 	if (cache_inclusive(cdesc + leaf)) {
 		flush_cache_leaf(leaf);
