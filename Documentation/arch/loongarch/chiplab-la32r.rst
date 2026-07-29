@@ -18,6 +18,7 @@ for a network-booted initramfs system:
 * 128 MiB of DDR starting at physical address 0;
 * an NS16550-compatible UART at ``0x1fe001e0``, IRQ 3, with a 33 MHz input
   clock and a 115200 baud console;
+* the CONFREG board I/O block at ``0x1fd0f000``;
 * the Chiplab DM9102-compatible Ethernet MAC at ``0x1ff00000``, IRQ 2;
 * the Chiplab APB DMA controller at ``0x1fd01160``;
 * the 128 MiB SLC NAND controller at ``0x1fe78000``, with a read-only kernel
@@ -39,6 +40,29 @@ intentionally does not freeze a particular FPGA bitstream frequency.
 The exception path also follows the reduced architecture: ECFG vector spacing
 is not used.  A compact common EENTRY dispatcher reads ESTAT and forwards
 interrupts and exception codes to the Linux handlers in software.
+
+CONFREG board I/O
+=================
+
+The CONFREG driver exposes the 16 red LEDs through the LED class, both
+red/green channels of the two bicolor LEDs through the LED class, and the
+eight slide switches as an input-only GPIO chip.  It also provides direct
+whole-register attributes on the platform device.  For example::
+
+  cd /sys/bus/platform/devices/1fd0f000.confreg
+
+  echo a55a > leds
+  echo 1 > bicolor_led0
+  echo 2 > bicolor_led1
+  echo deadbeef > seven_segment
+  cat switches
+
+Values are hexadecimal.  For a bicolor LED, 0 is off, 1 is green, 2 is red,
+and 3 enables both channels.  Each nibble of ``seven_segment`` is decoded as
+one hexadecimal digit.  Individual LED channels can instead be controlled
+through ``/sys/class/leds/chiplab:*``.  The switch GPIO chip has the label
+``chiplab-switches`` and line names ``switch0`` through ``switch7`` under
+``/dev/gpiochipN``.
 
 NAND, DMA and persistent storage
 ================================

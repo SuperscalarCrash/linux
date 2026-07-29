@@ -28,4 +28,17 @@ config LOONGSON_LAPTOP
 	help
 	  ACPI-based Loongson-3 family laptops generic driver.
 
+config CHIPLAB_CONFREG
+	tristate "Loongson Chiplab CONFREG peripherals"
+	depends on OF && MACH_LOONGSON32
+	depends on GPIOLIB
+	depends on LEDS_CLASS
+	help
+	  Support the board control registers in the Loongson Chiplab FPGA
+	  system.  The driver exposes the 16 monochrome LEDs and the red and
+	  green channels of both bicolor LEDs through the LED class, and the
+	  eight slide switches as an input-only GPIO controller.  It also
+	  provides sysfs attributes for whole-register LED control, the
+	  eight-digit hexadecimal seven-segment display, and switch sampling.
+
 endif # LOONGARCH_PLATFORM_DEVICES

@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/soc/loongson/loongson,chiplab-confreg.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Loongson Chiplab CONFREG board peripherals
+
+description: |
+  The CONFREG block in the Loongson Chiplab FPGA system contains simple
+  memory-mapped board peripherals.  This binding covers its 16 monochrome
+  LEDs, two red/green LEDs, eight-digit hexadecimal seven-segment display,
+  and eight slide switches.
+
+maintainers:
+  - inuEbisu <inuebisu@outlook.com>
+
+properties:
+  compatible:
+    const: loongson,chiplab-confreg
+
+  reg:
+    maxItems: 1
+
+  gpio-controller: true
+
+  '#gpio-cells':
+    const: 2
+
+  gpio-line-names:
+    minItems: 8
+    maxItems: 8
+
+required:
+  - compatible
+  - reg
+  - gpio-controller
+  - '#gpio-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    confreg@1fd0f000 {
+        compatible = "loongson,chiplab-confreg";
+        reg = <0x1fd0f000 0x24>;
+        gpio-controller;
+        #gpio-cells = <2>;
+        gpio-line-names = "switch0", "switch1", "switch2", "switch3",
+                          "switch4", "switch5", "switch6", "switch7";
+    };

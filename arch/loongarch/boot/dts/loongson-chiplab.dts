@@ -58,6 +58,16 @@
 			no-loopback-test;
 		};
 
+		confreg: confreg@1fd0f000 {
+			compatible = "loongson,chiplab-confreg";
+			reg = <0x1fd0f000 0x24>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			gpio-line-names = "switch0", "switch1", "switch2",
+					  "switch3", "switch4", "switch5",
+					  "switch6", "switch7";
+		};
+
 		gmac0: ethernet@1ff00000 {
 			compatible = "loongson,chiplab-dmfe";
 			reg = <0x1ff00000 0x10000>;
