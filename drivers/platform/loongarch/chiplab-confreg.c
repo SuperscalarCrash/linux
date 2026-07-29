@@ -220,8 +220,9 @@ static ssize_t leds_show(struct device *dev, struct device_attribute *attr,
 	struct chiplab_confreg *confreg = dev_get_drvdata(dev);
 
 	return sysfs_emit(buf, "%04x\n",
-			  chiplab_confreg_read(confreg, CHIPLAB_LED_REG) &
-			  GENMASK(15, 0));
+			  (u32)(chiplab_confreg_read(confreg,
+						    CHIPLAB_LED_REG) &
+				GENMASK(15, 0)));
 }
 
 static ssize_t leds_store(struct device *dev, struct device_attribute *attr,
@@ -249,7 +250,8 @@ static ssize_t chiplab_bicolor_show(struct device *dev, char *buf, u32 reg)
 	struct chiplab_confreg *confreg = dev_get_drvdata(dev);
 
 	return sysfs_emit(buf, "%x\n",
-			  chiplab_confreg_read(confreg, reg) & GENMASK(1, 0));
+			  (u32)(chiplab_confreg_read(confreg, reg) &
+				GENMASK(1, 0)));
 }
 
 static ssize_t chiplab_bicolor_store(struct device *dev, const char *buf,
@@ -334,8 +336,9 @@ static ssize_t switches_show(struct device *dev,
 	struct chiplab_confreg *confreg = dev_get_drvdata(dev);
 
 	return sysfs_emit(buf, "%02x\n",
-			  chiplab_confreg_read(confreg, CHIPLAB_SWITCH_REG) &
-			  GENMASK(7, 0));
+			  (u32)(chiplab_confreg_read(confreg,
+						    CHIPLAB_SWITCH_REG) &
+				GENMASK(7, 0)));
 }
 static DEVICE_ATTR_RO(switches);
 
@@ -349,6 +352,7 @@ static struct attribute *chiplab_confreg_attrs[] = {
 };
 
 static const struct attribute_group chiplab_confreg_group = {
+	.name = "registers",
 	.attrs = chiplab_confreg_attrs,
 };
 

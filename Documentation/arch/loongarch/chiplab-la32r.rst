@@ -51,11 +51,11 @@ whole-register attributes on the platform device.  For example::
 
   cd /sys/bus/platform/devices/1fd0f000.confreg
 
-  echo a55a > leds
-  echo 1 > bicolor_led0
-  echo 2 > bicolor_led1
-  echo deadbeef > seven_segment
-  cat switches
+  echo a55a > registers/leds
+  echo 1 > registers/bicolor_led0
+  echo 2 > registers/bicolor_led1
+  echo deadbeef > registers/seven_segment
+  cat registers/switches
 
 Values are hexadecimal.  For a bicolor LED, 0 is off, 1 is green, 2 is red,
 and 3 enables both channels.  Each nibble of ``seven_segment`` is decoded as
