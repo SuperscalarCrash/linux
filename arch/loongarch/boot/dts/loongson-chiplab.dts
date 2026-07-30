@@ -11,6 +11,7 @@
 		serial0 = &uart0;
 		ethernet0 = &gmac0;
 		framebuffer0 = &vga0;
+		framebuffer1 = &lcd0;
 	};
 
 	chosen {
@@ -78,6 +79,13 @@
 			 * with a 1024x480 backing store.  Its legacy property
 			 * parser does not endian-convert resolution cells.
 			 */
+		};
+
+		lcd0: framebuffer@1d030000 {
+			compatible = "superscalarcrash,chiplab-nt35510";
+			reg = <0x1d030000 0x1000>;
+			width = <480>;
+			height = <800>;
 		};
 
 		gmac0: ethernet@1ff00000 {

@@ -1642,6 +1642,15 @@ config FB_XILINX
 	  framebuffer. ML300 carries a 640*480 LCD display on the board,
 	  ML403 uses a standard DB15 VGA connector.
 
+config FB_CHIPLAB_NT35510
+	tristate "Chiplab NT35510 LCD framebuffer support"
+	depends on FB && HAS_IOMEM
+	depends on LOONGARCH || COMPILE_TEST
+	select FB_SYSMEM_HELPERS_DEFERRED
+	help
+	  Enable the 480x800 RGB565 NT35510 LCD connected to the Chiplab
+	  NSCSCC board through its memory-mapped 16-bit Intel 8080 bus.
+
 config FB_GOLDFISH
 	tristate "Goldfish Framebuffer"
 	depends on FB

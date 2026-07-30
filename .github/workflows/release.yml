@@ -184,6 +184,7 @@ jobs:
           grep -Fx "CONFIG_DMA_CMA=y" "${build}/.config"
           grep -Fx "CONFIG_CMA_SIZE_MBYTES=4" "${build}/.config"
           grep -Fx "CONFIG_FB_XILINX=y" "${build}/.config"
+          grep -Fx "CONFIG_FB_CHIPLAB_NT35510=y" "${build}/.config"
           grep -Fx "CONFIG_FRAMEBUFFER_CONSOLE=y" "${build}/.config"
           grep -Fx "CONFIG_NFS_FS=y" "${build}/.config"
           grep -Fx "CONFIG_NFS_V3=y" "${build}/.config"
