@@ -81,6 +81,13 @@
 			 */
 		};
 
+		ps2: ps2@1d020000 {
+			compatible = "altr,ps2-1.0";
+			reg = <0x1d020000 0x1000>;
+			interrupt-parent = <&cpuic>;
+			interrupts = <7>;
+		};
+
 		lcd0: framebuffer@1d030000 {
 			compatible = "superscalarcrash,chiplab-nt35510";
 			reg = <0x1d030000 0x1000>;
