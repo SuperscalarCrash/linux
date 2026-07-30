@@ -172,7 +172,7 @@ jobs:
           scripts/config --file "${build}/.config" --disable LOCALVERSION_AUTO
           scripts/config --file "${build}/.config" --enable MODULES
           scripts/config --file "${build}/.config" --set-str CMDLINE \
-            "console=tty0 console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 rdinit=/init cpuclock=${CPU_HZ}"
+            "console=tty0 console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 cpuclock=${CPU_HZ} root=/dev/nfs rw nfsroot=172.25.2.193:/srv/gemmont-rootfs-v031-ablation,vers=3,tcp ip=172.25.2.56:172.25.2.193:172.25.2.254:255.255.255.0:gemmont:eth0:off"
           make O="${build}" olddefconfig
           make O="${build}" syncconfig
 
@@ -185,6 +185,12 @@ jobs:
           grep -Fx "CONFIG_CMA_SIZE_MBYTES=4" "${build}/.config"
           grep -Fx "CONFIG_FB_XILINX=y" "${build}/.config"
           grep -Fx "CONFIG_FRAMEBUFFER_CONSOLE=y" "${build}/.config"
+          grep -Fx "CONFIG_NFS_FS=y" "${build}/.config"
+          grep -Fx "CONFIG_NFS_V3=y" "${build}/.config"
+          grep -Fx "CONFIG_ROOT_NFS=y" "${build}/.config"
+          grep -F "root=/dev/nfs" "${build}/.config"
+          grep -F "nfsroot=172.25.2.193:/srv/gemmont-rootfs-v031-ablation,vers=3,tcp" \
+            "${build}/.config"
           grep -F "cpuclock=${CPU_HZ}" "${build}/.config"
 
       - name: Build kernel, modules, and device trees
