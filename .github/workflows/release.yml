@@ -61,7 +61,7 @@ jobs:
           fi
 
           kernel_version="$(make -s kernelversion)"
-          localversion="-SuperscalarCrach-la32r-${tag}"
+          localversion="-SuperscalarCrash-la32r-${tag}"
           kernel_release="${kernel_version}${localversion}"
 
           if ((${#kernel_release} > 64)); then
@@ -132,7 +132,7 @@ jobs:
       CROSS_COMPILE: ${{ github.workspace }}/.ci-toolchain/gcc-16.1.0-loongarch/bin/loongarch32-linux-gnusf-
       LOCALVERSION: ""
       KBUILD_BUILD_USER: github-actions
-      KBUILD_BUILD_HOST: SuperscalarCrach
+      KBUILD_BUILD_HOST: SuperscalarCrash
       KBUILD_BUILD_VERSION: "1"
       RELEASE_TAG: ${{ github.ref_name }}
       SOURCE_COMMIT: ${{ github.sha }}
@@ -172,7 +172,7 @@ jobs:
           scripts/config --file "${build}/.config" --disable LOCALVERSION_AUTO
           scripts/config --file "${build}/.config" --enable MODULES
           scripts/config --file "${build}/.config" --set-str CMDLINE \
-            "console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 rdinit=/init cpuclock=${CPU_HZ}"
+            "console=tty0 console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 rdinit=/init cpuclock=${CPU_HZ}"
           make O="${build}" olddefconfig
           make O="${build}" syncconfig
 
@@ -181,6 +181,10 @@ jobs:
           grep -Fx "CONFIG_LOCALVERSION=\"${{ needs.prepare.outputs.localversion }}\"" \
             "${build}/.config"
           grep -Fx "CONFIG_MODULES=y" "${build}/.config"
+          grep -Fx "CONFIG_DMA_CMA=y" "${build}/.config"
+          grep -Fx "CONFIG_CMA_SIZE_MBYTES=4" "${build}/.config"
+          grep -Fx "CONFIG_FB_XILINX=y" "${build}/.config"
+          grep -Fx "CONFIG_FRAMEBUFFER_CONSOLE=y" "${build}/.config"
           grep -F "cpuclock=${CPU_HZ}" "${build}/.config"
 
       - name: Build kernel, modules, and device trees
