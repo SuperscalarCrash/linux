@@ -12,6 +12,7 @@
 		ethernet0 = &gmac0;
 		framebuffer0 = &vga0;
 		framebuffer1 = &lcd0;
+		usb0 = &usb0;
 	};
 
 	chosen {
@@ -79,6 +80,15 @@
 			 * with a 1024x480 backing store.  Its legacy property
 			 * parser does not endian-convert resolution cells.
 			 */
+		};
+
+		usb0: usb@1d040000 {
+			compatible = "superscalarcrash,chiplab-ue11";
+			reg = <0x1d040000 0x1000>;
+			interrupt-parent = <&cpuic>;
+			interrupts = <8>;
+			dr_mode = "host";
+			maximum-speed = "full-speed";
 		};
 
 		ps2: ps2@1d020000 {

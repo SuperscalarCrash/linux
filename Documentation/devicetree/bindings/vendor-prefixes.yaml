@@ -1614,6 +1614,8 @@ patternProperties:
     description: Sunplus Technology Co., Ltd.
   "^SUNW,.*":
     description: Sun Microsystems, Inc
+  "^superscalarcrash,.*":
+    description: SuperscalarCrash NSCSCC team
   "^supermicro,.*":
     description: Super Micro Computer, Inc.
   "^swir,.*":

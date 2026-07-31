@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/usb/superscalarcrash,chiplab-ue11.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: SuperscalarCrash Chiplab UE11 USB host controller
+
+maintainers:
+  - SuperscalarCrash Team <superscalarcrash@users.noreply.github.com>
+
+description: |
+  A one-port, PIO-only USB 1.1 Full-Speed host controller connected to the
+  USB3500 UTMI+ PHY on the NSCSCC Chiplab board.  This integration uses a
+  board-specific UE11 register map and exposes a read-only ABI identifier.
+
+allOf:
+  - $ref: usb-hcd.yaml#
+
+properties:
+  compatible:
+    const: superscalarcrash,chiplab-ue11
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  dr_mode:
+    const: host
+
+  maximum-speed:
+    const: full-speed
+
+required:
+  - compatible
+  - reg
+  - interrupts
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    usb@1d040000 {
+        compatible = "superscalarcrash,chiplab-ue11";
+        reg = <0x1d040000 0x1000>;
+        interrupts = <8>;
+        dr_mode = "host";
+        maximum-speed = "full-speed";
+    };
+
+...

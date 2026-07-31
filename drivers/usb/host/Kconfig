@@ -631,6 +631,19 @@ config USB_SL811_HCD
 	  To compile this driver as a module, choose M here: the
 	  module will be called sl811-hcd.
 
+config USB_CHIPLAB_UE11_HCD
+	tristate "Chiplab UE11 Full-Speed host controller"
+	depends on OF && HAS_IOMEM
+	help
+	  Enable the PIO host controller connected to the USB3500 UTMI+
+	  PHY on the NSCSCC Chiplab board.  It provides one USB 1.1
+	  Full-Speed root port and supports standard USB class drivers such
+	  as mass storage and HID.  High-Speed, Low-Speed and isochronous
+	  transfers are not supported.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called chiplab-ue11-hcd.
+
 config USB_SL811_HCD_ISO
 	bool "partial ISO support"
 	depends on USB_SL811_HCD
