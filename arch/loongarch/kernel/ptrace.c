@@ -79,10 +79,12 @@ static int gpr_get(struct task_struct *target,
 	int r;
 	struct pt_regs *regs = task_pt_regs(target);
 
-	r = membuf_write(&to, &regs->regs, sizeof(u64) * GPR_NUM);
-	r = membuf_write(&to, &regs->orig_a0, sizeof(u64));
-	r = membuf_write(&to, &regs->csr_era, sizeof(u64));
-	r = membuf_write(&to, &regs->csr_badvaddr, sizeof(u64));
+	r = membuf_write(&to, &regs->regs, sizeof(regs->regs));
+	r = membuf_write(&to, &regs->orig_a0, sizeof(regs->orig_a0));
+	r = membuf_write(&to, &regs->csr_era, sizeof(regs->csr_era));
+	r = membuf_write(&to, &regs->csr_badvaddr,
+			 sizeof(regs->csr_badvaddr));
+	r = membuf_zero(&to, to.left);
 
 	return r;
 }
@@ -93,23 +95,24 @@ static int gpr_set(struct task_struct *target,
 		   const void *kbuf, const void __user *ubuf)
 {
 	int err;
-	int a0_start = sizeof(u64) * GPR_NUM;
-	int era_start = a0_start + sizeof(u64);
-	int badvaddr_start = era_start + sizeof(u64);
 	struct pt_regs *regs = task_pt_regs(target);
+	int a0_start = sizeof(regs->regs);
+	int era_start = a0_start + sizeof(regs->orig_a0);
+	int badvaddr_start = era_start + sizeof(regs->csr_era);
 
 	err = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				 &regs->regs,
 				 0, a0_start);
 	err |= user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				 &regs->orig_a0,
-				 a0_start, a0_start + sizeof(u64));
+				 a0_start, a0_start + sizeof(regs->orig_a0));
 	err |= user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				 &regs->csr_era,
-				 era_start, era_start + sizeof(u64));
+				 era_start, era_start + sizeof(regs->csr_era));
 	err |= user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				 &regs->csr_badvaddr,
-				 badvaddr_start, badvaddr_start + sizeof(u64));
+				 badvaddr_start,
+				 badvaddr_start + sizeof(regs->csr_badvaddr));
 
 	return err;
 }
@@ -947,8 +950,12 @@ static const struct user_regset loongarch64_regsets[] = {
 #endif
 };
 
-static const struct user_regset_view user_loongarch64_view = {
+static const struct user_regset_view user_loongarch_view = {
+#ifdef CONFIG_32BIT
+	.name		= "loongarch32",
+#else
 	.name		= "loongarch64",
+#endif
 	.e_machine	= ELF_ARCH,
 	.regsets	= loongarch64_regsets,
 	.n		= ARRAY_SIZE(loongarch64_regsets),
@@ -957,7 +964,7 @@ static const struct user_regset_view user_loongarch64_view = {
 
 const struct user_regset_view *task_user_regset_view(struct task_struct *task)
 {
-	return &user_loongarch64_view;
+	return &user_loongarch_view;
 }
 
 static inline int read_user(struct task_struct *target, unsigned long addr,
