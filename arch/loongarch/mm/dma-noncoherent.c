@@ -12,6 +12,7 @@
 #include <linux/highmem.h>
 
 #include <asm/addrspace.h>
+#include <asm/barrier.h>
 #include <asm/cacheflush.h>
 
 #define GEMMONT_DCACHE_LINE_SIZE	64
@@ -28,6 +29,9 @@ static void gemmont_dma_cache_wback_inv(unsigned long start, size_t size)
 
 	for (; addr < end; addr += GEMMONT_DCACHE_LINE_SIZE)
 		cache_op(Hit_Writeback_Inv_LEAF1, addr);
+
+	/* Make the ownership transition visible before DMA or CPU access. */
+	c_sync();
 }
 
 void arch_dma_prep_coherent(struct page *page, size_t size)
