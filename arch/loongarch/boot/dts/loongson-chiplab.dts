@@ -17,7 +17,7 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
-		bootargs = "console=tty0 console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 cpuclock=100000000 root=/dev/nfs rw nfsroot=172.25.2.193:/srv/gemmont-rootfs-v031-ablation,vers=3,tcp ip=172.25.2.56:172.25.2.193:172.25.2.254:255.255.255.0:gemmont:eth0:off";
+		bootargs = "console=tty0 console=ttyS0,115200 earlycon=uart8250,mmio,0x1fe001e0,115200 cpuclock=100000000 root=/dev/nfs rw nfsroot=192.168.156.128:/root/gemmont-nfs-root,vers=3,tcp ip=192.168.156.56:192.168.156.128:192.168.156.2:255.255.255.0:gemmont:eth0:off";
 	};
 
 	cpus {
